@@ -12,7 +12,7 @@ import { useTimeStore } from './store/timeStore'
 import { useNavigationInit, useNavigation } from './hooks/useNavigation'
 import { useTransition } from './hooks/useTransition'
 import { RoomGenerator } from './generators/RoomGenerator'
-import type { RoomConfig } from './types/room'
+import type { RoomConfig, DoorwayPlacement } from './types/room'
 import { getTransitionSystem } from './systems/TransitionSystem'
 import { CollisionDebug } from './debug/CollisionDebug'
 import { DebugOverlay } from './debug/DebugOverlay'
@@ -54,7 +54,7 @@ function GrowlReactiveChromaticAberration() {
  * First-Person Navigation Controller with Transition Support
  * Manages player movement, camera, and room transitions in first-person mode.
  */
-function NavigationController({ roomConfig, onTransition }: { roomConfig: RoomConfig | null; onTransition: (toRoomIndex: number) => void }) {
+function NavigationController({ roomConfig, onTransition }: { roomConfig: RoomConfig | null; onTransition: (doorway: DoorwayPlacement) => void }) {
   // Initialize navigation system
   useNavigationInit()
 
@@ -65,8 +65,8 @@ function NavigationController({ roomConfig, onTransition }: { roomConfig: RoomCo
     enableAudioSway: true,
     baseFOV: 75,
     onTransition: (trigger) => {
-      // Trigger room transition when entering doorway
-      onTransition(trigger.doorway.leadsTo)
+      // Trigger room transition when entering doorway - pass the full doorway info
+      onTransition(trigger.doorway)
     },
   })
 
@@ -195,22 +195,17 @@ function Scene({ showCollisionDebug = false }: SceneProps) {
   }, [currentRoomIndex, generator])
 
   // Handle transition trigger from navigation
-  const handleTransition = useCallback((toRoomIndex: number) => {
+  const handleTransition = useCallback((doorway: DoorwayPlacement) => {
     // Get current room config
     const fromRoom = roomConfig
     if (!fromRoom) return
 
-    // Find the doorway being used (from NavigationSystem trigger)
+    // Check if already transitioning
     const transitionSystem = getTransitionSystem()
-    if (!transitionSystem) return
+    if (!transitionSystem || transitionSystem.isTransitioning()) return
 
-    // Get doorway from navigation trigger
-    // Note: The actual doorway info comes from NavigationSystem's trigger
-    // For now, we'll start the transition with the doorways in current room
-    if (fromRoom.doorways.length > 0) {
-      const doorway = fromRoom.doorways[0] // Use first doorway for simplicity
-      transition.startTransition(doorway, fromRoom, toRoomIndex)
-    }
+    // Start transition to the room the doorway leads to
+    transition.startTransition(doorway, fromRoom, doorway.leadsTo)
   }, [roomConfig, transition])
 
   // Memoize background color args
