@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
-import { Canvas } from '@react-three/fiber'
+import { Canvas, useFrame } from '@react-three/fiber'
 import { EffectComposer, Bloom, ChromaticAberration, Vignette } from '@react-three/postprocessing'
 import { BlendFunction } from 'postprocessing'
 import * as THREE from 'three'
@@ -17,6 +17,7 @@ import { getTransitionSystem } from './systems/TransitionSystem'
 import { CollisionDebug } from './debug/CollisionDebug'
 import { DebugOverlay } from './debug/DebugOverlay'
 import { getWrongnessSystem } from './systems/WrongnessSystem'
+import { usePerformanceStore, usePerformanceSettings } from './store/performanceStore'
 
 // Pale-strata color palette
 const COLORS = {
@@ -26,6 +27,34 @@ const COLORS = {
   secondary: '#8eecf5',
 }
 
+
+/**
+ * FPS Monitor - Updates performance store for adaptive quality
+ */
+function FpsMonitor() {
+  const updateFps = usePerformanceStore((state) => state.updateFps)
+  const adaptQuality = usePerformanceStore((state) => state.adaptQuality)
+  const frameCount = useMemo(() => ({ current: 0, lastTime: performance.now() }), [])
+
+  useFrame(() => {
+    frameCount.current++
+    const now = performance.now()
+    const delta = now - frameCount.lastTime
+
+    // Calculate FPS every second
+    if (delta >= 1000) {
+      const fps = (frameCount.current / delta) * 1000
+      updateFps(fps)
+      frameCount.current = 0
+      frameCount.lastTime = now
+
+      // Check if we need to adapt quality (every 5 seconds worth of samples)
+      adaptQuality()
+    }
+  })
+
+  return null
+}
 
 /**
  * Growl-Reactive Chromatic Aberration
@@ -173,6 +202,9 @@ function Scene({ showCollisionDebug = false }: SceneProps) {
   const [currentRoomIndex, setCurrentRoomIndex] = useState(0)
   const [roomConfig, setRoomConfig] = useState<RoomConfig | null>(null)
 
+  // Performance settings
+  const perfSettings = usePerformanceSettings()
+
   // Initialize transition system
   const transition = useTransition({
     onTransitionComplete: (toRoom) => {
@@ -211,9 +243,6 @@ function Scene({ showCollisionDebug = false }: SceneProps) {
   // Memoize background color args
   const backgroundColorArgs = useMemo(() => [COLORS.background] as const, [])
 
-  // Enable post-processing for visual polish
-  const enablePostProcessing = true
-
   return (
     <>
       {/* Scene background color */}
@@ -225,6 +254,9 @@ function Scene({ showCollisionDebug = false }: SceneProps) {
 
       {/* Minimal fallback lighting - dynamic lights handled by RoomAtmosphere */}
       <ambientLight intensity={0.5} />
+
+      {/* FPS Monitor for adaptive quality */}
+      <FpsMonitor />
 
       {/* Growl System Controller - manages time-based dread effects */}
       {/* Camera effects disabled - handled by NavigationController */}
@@ -248,29 +280,33 @@ function Scene({ showCollisionDebug = false }: SceneProps) {
       {/* First-person navigation controller with transition support */}
       <NavigationController roomConfig={roomConfig} onTransition={handleTransition} />
 
-      {/* Post-processing effects pipeline - temporarily disabled */}
-      {enablePostProcessing && (
+      {/* Post-processing effects pipeline - conditional based on performance tier */}
+      {perfSettings.enablePostProcessing && (
         <EffectComposer>
           {/* Bloom for glowing elements */}
-          <Bloom
-            intensity={0.5}
-            luminanceThreshold={0.2}
-            luminanceSmoothing={0.9}
-            mipmapBlur
-          />
+          {perfSettings.enableBloom && (
+            <Bloom
+              intensity={0.5}
+              luminanceThreshold={0.2}
+              luminanceSmoothing={0.9}
+              mipmapBlur
+            />
+          )}
 
           {/* Growl-reactive chromatic aberration for color fringing */}
-          <GrowlReactiveChromaticAberration />
+          {perfSettings.enableChromaticAberration && <GrowlReactiveChromaticAberration />}
 
           {/* Glitch effects - audio and Growl-triggered distortions */}
-          <GlitchEffect />
+          {perfSettings.enableGlitch && <GlitchEffect />}
 
           {/* Vignette for liminal atmosphere */}
-          <Vignette
-            offset={0.3}
-            darkness={0.7}
-            blendFunction={BlendFunction.NORMAL}
-          />
+          {perfSettings.enableVignette && (
+            <Vignette
+              offset={0.3}
+              darkness={0.7}
+              blendFunction={BlendFunction.NORMAL}
+            />
+          )}
         </EffectComposer>
       )}
     </>
@@ -291,6 +327,10 @@ function App() {
   // Mobile entry state (for enabling touch controls after tapping to enter)
   const [mobileEntered, setMobileEntered] = useState(false)
 
+  // Performance settings
+  const perfSettings = usePerformanceSettings()
+  const perfTier = usePerformanceStore((state) => state.tier)
+
   // Initialize time store once on mount
   useEffect(() => {
     useTimeStore.getState().initialize()
@@ -299,6 +339,11 @@ function App() {
   useEffect(() => {
     setIsTouchDevice('ontouchstart' in window || navigator.maxTouchPoints > 0)
   }, [])
+
+  // Log detected performance tier
+  useEffect(() => {
+    console.log(`[Performance] Detected tier: ${perfTier}, DPR: ${perfSettings.pixelRatio.toFixed(2)}`)
+  }, [perfTier, perfSettings.pixelRatio])
 
   // Handle mobile enter
   const handleMobileEnter = useCallback(() => {
@@ -329,11 +374,14 @@ function App() {
           near: 0.1,
           far: 2000,
         }}
+        dpr={perfSettings.pixelRatio}
         gl={{
-          antialias: true,
+          antialias: perfSettings.antialias,
           toneMapping: THREE.ACESFilmicToneMapping,
           toneMappingExposure: 1.0,
+          powerPreference: 'high-performance',
         }}
+        performance={{ min: 0.5 }}
       >
         <Scene showCollisionDebug={showCollisionDebug} />
       </Canvas>
