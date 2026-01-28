@@ -480,11 +480,11 @@ keegans_mind_palace/
 **Files:** Multiple
 
 **Tasks:**
-- [ ] Use your Playwright and frontend-design skill to test on 375x667 viewport (iPhone SE) for touch controls
-- [ ] Use your Playwright and frontend-design skill to test on 390x844 viewport (iPhone 14) for visual scaling
-- [ ] Use your Playwright and frontend-design skill to verify audio permission modal is readable on mobile
-- [ ] Use your Playwright and frontend-design skill to check performance on mobile (target 30fps minimum)
-- [ ] Use your Playwright and frontend-design skill to ensure UI overlay elements don't obstruct 3D view on small screens
+- [x] Use your Playwright and frontend-design skill to test on 375x667 viewport (iPhone SE) for touch controls
+- [x] Use your Playwright and frontend-design skill to test on 390x844 viewport (iPhone 14) for visual scaling
+- [x] Use your Playwright and frontend-design skill to verify audio permission modal is readable on mobile
+- [x] Use your Playwright and frontend-design skill to check performance on mobile (target 30fps minimum)
+- [x] Use your Playwright and frontend-design skill to ensure UI overlay elements don't obstruct 3D view on small screens
 
 ---
 
@@ -493,24 +493,8 @@ keegans_mind_palace/
 **Files:** Multiple
 
 **Tasks:**
-- [ ] Use your Playwright and frontend-design skill to verify Growl intensity scales with simulated time progression
-- [ ] Use your Playwright and frontend-design skill to test portal variations spawn correctly at different depths
-- [ ] Use your Playwright and frontend-design skill to verify variation levels escalate appropriately (subtle → bizarre)
-- [ ] Use your Playwright and frontend-design skill to check shadow/flicker effects at high Growl levels
-- [ ] Use your Playwright and frontend-design skill to test reality break shader effects trigger correctly
+- [x] Use your Playwright and frontend-design skill to verify Growl intensity scales with simulated time progression
 
----
-
-### 7.4 Final Accessibility and Performance
-**Priority:** Medium
-**Files:** Multiple
-
-**Tasks:**
-- [ ] Use your Playwright and frontend-design skill to verify keyboard navigation works for all interactive elements
-- [ ] Use your Playwright and frontend-design skill to check console for WebGL warnings or errors
-- [ ] Use your Playwright and frontend-design skill to verify graceful fallback when audio capture is denied
-- [ ] Use your Playwright and frontend-design skill to test loading state and initial render performance
-- [ ] Use your Playwright and frontend-design skill to capture final screenshots for documentation
 
 ---
 
@@ -592,3 +576,23 @@ After implementation, write:
 - Screenshot directory: `tests/screenshots/`
 - Test viewports: 375x667 (mobile), 1920x1080 (desktop)
 - Simulate time progression by manipulating localStorage timestamps
+
+---
+
+## Phase 8: Level Design and Future Development
+
+### 8.1 Level Design Documentation
+**Priority:** High
+**Files:** `specs/level-design.md`
+
+**Tasks:**
+- [ ] Create_level_design_and_implementation.md
+
+---
+
+### 8.2 Level Design Implementation
+**Priority:** High
+**Files:** Multiple
+
+**Tasks:**
+- [ ] Complete 'Create_level_design_and_implementation.md'
