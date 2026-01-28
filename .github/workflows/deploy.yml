@@ -32,7 +32,7 @@ jobs:
         run: npm ci
 
       - name: Build
-        run: npx vite build
+        run: npm run build
 
       - name: Inject deployment timestamp
         run: |
