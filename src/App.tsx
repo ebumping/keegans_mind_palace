@@ -199,7 +199,8 @@ function Scene({ showCollisionDebug = false }: SceneProps) {
       <color attach="background" args={backgroundColorArgs} />
 
       {/* Static fog for now - disable Growl-reactive fog */}
-      <fogExp2 attach="fog" args={[COLORS.fogColor, 0.05]} />
+      {/* Reduced fog density for larger rooms */}
+      <fogExp2 attach="fog" args={[COLORS.fogColor, 0.015]} />
 
       {/* Minimal fallback lighting - dynamic lights handled by RoomAtmosphere */}
       <ambientLight intensity={0.5} />
@@ -297,7 +298,7 @@ function App() {
           position: [0, 2, 5],
           fov: 75,
           near: 0.1,
-          far: 1000,
+          far: 2000,
         }}
         gl={{
           antialias: true,
