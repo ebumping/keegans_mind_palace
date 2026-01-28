@@ -142,7 +142,7 @@ export class Doorway {
    * Check if a position is within the doorway bounds
    */
   isInDoorway(position: THREE.Vector3, threshold: number = 0.5): boolean {
-    const { placement, roomDimensions } = this.config;
+    const { placement } = this.config;
     const doorwayCenter = this.worldPosition.clone();
     doorwayCenter.y = placement.height / 2;
 

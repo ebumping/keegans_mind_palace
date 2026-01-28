@@ -36,6 +36,10 @@ uniform float u_breatheIntensity;
 uniform float u_rippleIntensity;
 uniform float u_rippleFrequency;
 
+// Glitch controls
+uniform float u_geometryGlitch;  // 0-1 glitch intensity
+uniform float u_glitchTime;      // Time for glitch animation
+
 // Outputs to fragment shader
 varying vec2 vUv;
 varying vec3 vNormal;
@@ -106,6 +110,40 @@ void main() {
   float spike = u_transient * spikeNoise * 0.04;
   pos += normal * spike;
   totalDisplacement += spike;
+
+  // === Geometry Glitch ===
+  // World-space vertex jitter for reality-breaking effect
+  // Only active when u_geometryGlitch > 0
+  if (u_geometryGlitch > 0.001) {
+    // Create high-frequency jitter based on vertex position and time
+    float glitchSeed = dot(pos, vec3(12.9898, 78.233, 45.164)) + u_glitchTime * 50.0;
+
+    // Random jitter in all directions
+    vec3 jitter = vec3(
+      fract(sin(glitchSeed) * 43758.5453) - 0.5,
+      fract(sin(glitchSeed + 1.0) * 43758.5453) - 0.5,
+      fract(sin(glitchSeed + 2.0) * 43758.5453) - 0.5
+    );
+
+    // Scale jitter by intensity
+    float jitterMagnitude = u_geometryGlitch * 0.25;
+    jitter *= jitterMagnitude;
+
+    // Apply jitter primarily along normal for more natural effect
+    float normalJitter = (jitter.x + jitter.y + jitter.z) * 0.33;
+    pos += normal * normalJitter * 0.3;
+
+    // Also apply world-space jitter for more chaotic effect
+    pos += jitter;
+
+    // Add occasional large displacements (vertex "popping")
+    float popChance = fract(sin(glitchSeed * 0.1) * 12345.6789);
+    if (popChance > 0.95) {
+      pos += normal * u_geometryGlitch * 0.5 * (fract(glitchSeed * 7.0) - 0.5);
+    }
+
+    totalDisplacement += length(jitter);
+  }
 
   // Store total displacement for fragment shader
   vDisplacement = totalDisplacement;

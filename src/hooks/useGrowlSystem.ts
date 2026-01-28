@@ -20,7 +20,6 @@ import {
 import {
   useTimeStore,
   useGrowlIntensity,
-  useGrowlEffects,
   useGrowlPhase,
   GrowlPhase,
 } from '../store/timeStore';
@@ -78,7 +77,6 @@ export function useGrowlSystemUpdate(playerPosition: THREE.Vector3) {
  */
 export function useGrowlCameraShake(enabled: boolean = true) {
   const { camera } = useThree();
-  const growlEffects = useGrowlEffects();
   const basePositionRef = useRef<THREE.Vector3 | null>(null);
 
   // Store base camera position on first render
@@ -91,6 +89,8 @@ export function useGrowlCameraShake(enabled: boolean = true) {
   useFrame((state) => {
     if (!enabled || !basePositionRef.current) return;
 
+    // Get growl effects directly from store to avoid re-render issues
+    const growlEffects = useTimeStore.getState().growlEffects;
     const shake = calculateGrowlShake(growlEffects, state.clock.elapsedTime);
 
     // Apply shake offset from base position
@@ -113,12 +113,13 @@ export function useGrowlCameraShake(enabled: boolean = true) {
  */
 export function useGrowlFOVDistortion(baseFOV: number = 75, enabled: boolean = true) {
   const { camera } = useThree();
-  const growlEffects = useGrowlEffects();
 
   useFrame((state) => {
     if (!enabled) return;
     if (!(camera instanceof THREE.PerspectiveCamera)) return;
 
+    // Get growl effects directly from store to avoid re-render issues
+    const growlEffects = useTimeStore.getState().growlEffects;
     const distortedFOV = calculateGrowlFOV(
       baseFOV,
       growlEffects,
@@ -219,7 +220,8 @@ export function useGrowlDebug() {
   const resetTimestamp = useTimeStore((state) => state.resetDeploymentTimestamp);
   const intensity = useGrowlIntensity();
   const phase = useGrowlPhase();
-  const effects = useGrowlEffects();
+  // Get effects via getState to avoid re-render issues
+  const getEffects = useCallback(() => useTimeStore.getState().growlEffects, []);
 
   const setPhase = useCallback(
     (targetPhase: GrowlPhase) => {
@@ -242,7 +244,7 @@ export function useGrowlDebug() {
   return {
     intensity,
     phase,
-    effects,
+    getEffects,
     setDebugHours,
     setPhase,
     clearDebug,

@@ -8,7 +8,7 @@
 
 import * as THREE from 'three';
 import { SeededRandom } from '../utils/seededRandom';
-import type { DoorwayPlacement, DoorwayGeometry, Wall, RoomDimensions } from '../types/room';
+import type { DoorwayPlacement, DoorwayGeometry, RoomDimensions } from '../types/room';
 
 // Pale-strata color palette
 const COLORS = {
@@ -241,9 +241,6 @@ export class DoorwayGenerator {
     const { placement, geometry } = config;
     const { width, height } = placement;
     const { frameThickness, archType } = geometry;
-
-    const meshes: THREE.Mesh[] = [];
-    const geoms: THREE.BufferGeometry[] = [];
 
     // Frame material - dark with subtle color
     const frameMat = new THREE.MeshStandardMaterial({
@@ -523,7 +520,7 @@ export class DoorwayGenerator {
    */
   private createGlowEdges(
     config: DoorwayConfig,
-    rng: SeededRandom
+    _rng: SeededRandom
   ): {
     glowMeshes: THREE.Mesh[];
     glowGeoms: THREE.BufferGeometry[];
@@ -610,14 +607,14 @@ export class DoorwayGenerator {
    */
   private createDoorPanel(
     config: DoorwayConfig,
-    rng: SeededRandom
+    _rng: SeededRandom
   ): {
     doorMesh: THREE.Mesh;
     doorGeom: THREE.BufferGeometry;
     doorMat: THREE.Material;
     pivotGroup: THREE.Group;
   } {
-    const { placement, state, openAmount } = config;
+    const { placement, openAmount } = config;
     const { width, height } = placement;
     const doorThickness = 0.05;
 

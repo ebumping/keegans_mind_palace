@@ -357,7 +357,7 @@ export class HallwayGenerator {
   private createFloor(
     config: HallwayConfig,
     depth: number,
-    rng: SeededRandom
+    _rng: SeededRandom
   ): {
     floorMesh: THREE.Mesh;
     floorGeom: THREE.BufferGeometry;
@@ -386,7 +386,7 @@ export class HallwayGenerator {
   private createCeiling(
     config: HallwayConfig,
     depth: number,
-    rng: SeededRandom
+    _rng: SeededRandom
   ): {
     ceilingMesh: THREE.Mesh;
     ceilingGeom: THREE.BufferGeometry;
@@ -486,7 +486,7 @@ export class HallwayGenerator {
   private createLightStrips(
     config: HallwayConfig,
     depth: number,
-    rng: SeededRandom
+    _rng: SeededRandom
   ): {
     lightMeshes: THREE.Mesh[];
     lightGeoms: THREE.BufferGeometry[];

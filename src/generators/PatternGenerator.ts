@@ -32,7 +32,6 @@ import {
 } from '../utils/patterns';
 import {
   WaveformType,
-  PatternDirection,
   BlendMode,
   PatternLayerType,
   AudioBand,
@@ -91,7 +90,6 @@ export class PatternGenerator {
    * Generate all patterns for a room
    */
   generateForRoom(roomSeed: number, roomIndex: number): RoomPatterns {
-    const rng = new SeededRandom(roomSeed + 10000);
     const abnormality = getAbnormalityFactor(roomIndex);
 
     return {
@@ -122,7 +120,7 @@ export class PatternGenerator {
    */
   private generateWallPattern(
     seed: number,
-    roomIndex: number,
+    _roomIndex: number,
     abnormality: number
   ): WallPatternConfig {
     const rng = new SeededRandom(seed);
@@ -563,8 +561,8 @@ export class PatternGenerator {
     pattern: CompositePattern,
     audioLevels: AudioLevels,
     time: number,
-    seed: number,
-    bindings: PatternAudioBinding[]
+    _seed: number,
+    _bindings: PatternAudioBinding[]
   ): number {
     // Apply audio distortion to UVs
     const distorted = audioDistortUV(

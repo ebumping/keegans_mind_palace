@@ -6,6 +6,7 @@
  */
 
 import { create } from 'zustand';
+import { useShallow } from 'zustand/react/shallow';
 import type { AudioLevels } from '../core/AudioAnalyser';
 import type { AudioSource } from '../core/AudioCapture';
 
@@ -125,34 +126,43 @@ export const useAudioStore = create<AudioStore>((set, get) => ({
 /**
  * Selector hooks for specific parts of the audio state
  * Use these in components to avoid unnecessary re-renders
+ * Using useShallow for shallow comparison to prevent infinite re-renders
  */
 export const useAudioLevels = () =>
-  useAudioStore((state) => ({
-    bass: state.bass,
-    mid: state.mid,
-    high: state.high,
-    overall: state.overall,
-    transient: state.transient,
-    transientIntensity: state.transientIntensity,
-  }));
+  useAudioStore(
+    useShallow((state) => ({
+      bass: state.bass,
+      mid: state.mid,
+      high: state.high,
+      overall: state.overall,
+      transient: state.transient,
+      transientIntensity: state.transientIntensity,
+    }))
+  );
 
 export const useAudioSmooth = () =>
-  useAudioStore((state) => ({
-    bassSmooth: state.bassSmooth,
-    midSmooth: state.midSmooth,
-    highSmooth: state.highSmooth,
-  }));
+  useAudioStore(
+    useShallow((state) => ({
+      bassSmooth: state.bassSmooth,
+      midSmooth: state.midSmooth,
+      highSmooth: state.highSmooth,
+    }))
+  );
 
 export const useAudioHistory = () =>
-  useAudioStore((state) => ({
-    bassHistory: state.bassHistory,
-    midHistory: state.midHistory,
-    highHistory: state.highHistory,
-  }));
+  useAudioStore(
+    useShallow((state) => ({
+      bassHistory: state.bassHistory,
+      midHistory: state.midHistory,
+      highHistory: state.highHistory,
+    }))
+  );
 
 export const useAudioCapture = () =>
-  useAudioStore((state) => ({
-    isCapturing: state.isCapturing,
-    audioSource: state.audioSource,
-    error: state.error,
-  }));
+  useAudioStore(
+    useShallow((state) => ({
+      isCapturing: state.isCapturing,
+      audioSource: state.audioSource,
+      error: state.error,
+    }))
+  );

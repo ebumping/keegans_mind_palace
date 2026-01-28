@@ -361,14 +361,14 @@ keegans_mind_palace/
 **Files:** `src/systems/PortalVariationSystem.ts`, `src/generators/VariationGenerator.ts`
 
 **Tasks:**
-- [ ] Create variation level calculator based on depth + time
-- [ ] Implement Level 1 variations: wallpaper seed changes, furniture offset
-- [ ] Implement Level 2 variations: door target remapping, extra geometry
-- [ ] Implement Level 3 variations: texture UV flip for backwards text, face swap textures
-- [ ] Implement Level 4 variations: gravity uniform, mirror self reflection
-- [ ] Implement Level 5 variations: reality break shaders, cross-universe aesthetics
-- [ ] Add portal shimmer effect indicating alternate version
-- [ ] Store variation state for backtracking consistency
+- [x] Create variation level calculator based on depth + time
+- [x] Implement Level 1 variations: wallpaper seed changes, furniture offset
+- [x] Implement Level 2 variations: door target remapping, extra geometry
+- [x] Implement Level 3 variations: texture UV flip for backwards text, face swap textures
+- [x] Implement Level 4 variations: gravity uniform, mirror self reflection
+- [x] Implement Level 5 variations: reality break shaders, cross-universe aesthetics
+- [x] Add portal shimmer effect indicating alternate version
+- [x] Store variation state for backtracking consistency
 
 ---
 
@@ -377,12 +377,12 @@ keegans_mind_palace/
 **Files:** `src/generators/CircuitryGenerator.ts`, `src/shaders/circuitry.frag`
 
 **Tasks:**
-- [ ] Create procedural circuit trace generator using Voronoi/grid hybrid
-- [ ] Implement circuit glow shader with audio-reactive pulse
-- [ ] Add random spawn chance (15-25%) per room generation
-- [ ] Increase spawn probability in deeper rooms
-- [ ] Create circuit "data flow" animation along traces
-- [ ] Integrate with pale-strata color palette (cyan accent for circuits)
+- [x] Create procedural circuit trace generator using Voronoi/grid hybrid
+- [x] Implement circuit glow shader with audio-reactive pulse
+- [x] Add random spawn chance (15-25%) per room generation
+- [x] Increase spawn probability in deeper rooms
+- [x] Create circuit "data flow" animation along traces
+- [x] Integrate with pale-strata color palette (cyan accent for circuits)
 
 ---
 
@@ -391,13 +391,13 @@ keegans_mind_palace/
 **Files:** `src/systems/GlitchSystem.ts`, `src/shaders/glitch.frag`
 
 **Tasks:**
-- [ ] Create GlitchSystem tracking trigger conditions (transients + time + random)
-- [ ] Implement screen tear effect (horizontal slice displacement)
-- [ ] Add RGB channel separation with audio-reactive offset
-- [ ] Create geometry distortion (vertex jitter in world space)
-- [ ] Implement "reality break" full-screen effect for intense glitches
-- [ ] Scale glitch intensity with Growl proximity
-- [ ] Add post-processing integration for screen-space glitches
+- [x] Create GlitchSystem tracking trigger conditions (transients + time + random)
+- [x] Implement screen tear effect (horizontal slice displacement)
+- [x] Add RGB channel separation with audio-reactive offset
+- [x] Create geometry distortion (vertex jitter in world space)
+- [x] Implement "reality break" full-screen effect for intense glitches
+- [x] Scale glitch intensity with Growl proximity
+- [x] Add post-processing integration for screen-space glitches
 
 ---
 
