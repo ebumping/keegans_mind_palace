@@ -76,9 +76,11 @@ function NavigationController({ roomConfig, onTransition }: { roomConfig: RoomCo
 /**
  * Pointer Lock Overlay
  * Shows instructions when pointer is not locked.
+ * On mobile, tapping enters the experience without pointer lock.
  */
-function PointerLockOverlay() {
+function PointerLockOverlay({ isTouchDevice, onEnter }: { isTouchDevice: boolean; onEnter: () => void }) {
   const [isLocked, setIsLocked] = useState(false)
+  const [hasEntered, setHasEntered] = useState(false)
 
   useEffect(() => {
     const handleLockChange = () => {
@@ -88,12 +90,20 @@ function PointerLockOverlay() {
     return () => document.removeEventListener('pointerlockchange', handleLockChange)
   }, [])
 
-  const lock = useCallback(() => {
-    const canvas = document.querySelector('canvas')
-    canvas?.requestPointerLock()
-  }, [])
+  const enter = useCallback(() => {
+    if (isTouchDevice) {
+      // On mobile, just dismiss the overlay and enable touch controls
+      setHasEntered(true)
+      onEnter()
+    } else {
+      // On desktop, request pointer lock
+      const canvas = document.querySelector('canvas')
+      canvas?.requestPointerLock()
+    }
+  }, [isTouchDevice, onEnter])
 
-  if (isLocked) return null
+  // Hide overlay when entered (mobile) or pointer locked (desktop)
+  if (hasEntered || isLocked) return null
 
   return (
     <div
@@ -110,8 +120,13 @@ function PointerLockOverlay() {
         backgroundColor: 'rgba(26, 24, 52, 0.85)',
         zIndex: 100,
         cursor: 'pointer',
+        touchAction: 'none',
       }}
-      onClick={lock}
+      onClick={enter}
+      onTouchEnd={(e) => {
+        e.preventDefault()
+        enter()
+      }}
     >
       <div style={{
         color: '#c792f5',
@@ -119,7 +134,7 @@ function PointerLockOverlay() {
         fontFamily: 'monospace',
         marginBottom: '16px',
       }}>
-        Click to Enter
+        {isTouchDevice ? 'Tap to Enter' : 'Click to Enter'}
       </div>
       <div style={{
         color: '#8eecf5',
@@ -128,11 +143,22 @@ function PointerLockOverlay() {
         textAlign: 'center',
         maxWidth: '400px',
         lineHeight: '1.6',
+        padding: '0 20px',
       }}>
-        WASD / Arrow Keys - Move<br />
-        Mouse - Look Around<br />
-        Shift - Sprint<br />
-        ESC - Release Cursor
+        {isTouchDevice ? (
+          <>
+            Left Joystick - Move<br />
+            Right Zone - Look Around<br />
+            Center Button - Sprint
+          </>
+        ) : (
+          <>
+            WASD / Arrow Keys - Move<br />
+            Mouse - Look Around<br />
+            Shift - Sprint<br />
+            ESC - Release Cursor
+          </>
+        )}
       </div>
     </div>
   )
@@ -267,6 +293,9 @@ function App() {
   // Mobile touch controls (detect touch device)
   const [isTouchDevice, setIsTouchDevice] = useState(false)
 
+  // Mobile entry state (for enabling touch controls after tapping to enter)
+  const [mobileEntered, setMobileEntered] = useState(false)
+
   // Initialize time store once on mount
   useEffect(() => {
     useTimeStore.getState().initialize()
@@ -274,6 +303,11 @@ function App() {
 
   useEffect(() => {
     setIsTouchDevice('ontouchstart' in window || navigator.maxTouchPoints > 0)
+  }, [])
+
+  // Handle mobile enter
+  const handleMobileEnter = useCallback(() => {
+    setMobileEntered(true)
   }, [])
 
   // Handle audio permission granted
@@ -319,12 +353,12 @@ function App() {
       {audioPermissionGranted && (
         <Controls
           onFirstMovement={handleFirstMovement}
-          enableTouchControls={isTouchDevice}
+          enableTouchControls={isTouchDevice && mobileEntered}
         />
       )}
 
       {/* Pointer lock overlay with instructions */}
-      <PointerLockOverlay />
+      <PointerLockOverlay isTouchDevice={isTouchDevice} onEnter={handleMobileEnter} />
 
       {/* Debug Overlay - unified debug panel system */}
       <DebugOverlay

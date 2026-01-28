@@ -9,7 +9,7 @@
  * - Mobile-responsive touch controls fallback
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useAudioStore } from '../../store/audioStore';
 import type { AudioSource } from '../../core/AudioCapture';
@@ -358,15 +358,161 @@ function NavigationHints({ onFade }: { onFade?: () => void }) {
 // Mobile Touch Controls
 // ============================================
 
+import { getTouchInputManager } from '../../systems/NavigationSystem';
+
 function MobileTouchControls({ enabled }: { enabled: boolean }) {
+  // Joystick state
+  const [joystickOffset, setJoystickOffset] = useState({ x: 0, y: 0 });
+  const [isSprintPressed, setIsSprintPressed] = useState(false);
+
+  // Track touch identifiers
+  const joystickTouchRef = useRef<number | null>(null);
+  const lookTouchRef = useRef<number | null>(null);
+  const lastLookPosRef = useRef<{ x: number; y: number } | null>(null);
+  const joystickCenterRef = useRef<{ x: number; y: number } | null>(null);
+
+  // Joystick zone size
+  const JOYSTICK_SIZE = 128; // w-32 = 128px
+  const JOYSTICK_MAX_OFFSET = JOYSTICK_SIZE / 2 - 24; // Max offset from center
+
+  // Handle left joystick (movement)
+  const handleJoystickTouchStart = useCallback((e: React.TouchEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const touch = e.changedTouches[0];
+    if (joystickTouchRef.current === null) {
+      joystickTouchRef.current = touch.identifier;
+      const rect = e.currentTarget.getBoundingClientRect();
+      joystickCenterRef.current = {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+      };
+    }
+  }, []);
+
+  const handleJoystickTouchMove = useCallback((e: React.TouchEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const touchInput = getTouchInputManager();
+
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      const touch = e.changedTouches[i];
+      if (touch.identifier === joystickTouchRef.current && joystickCenterRef.current) {
+        const dx = touch.clientX - joystickCenterRef.current.x;
+        const dy = touch.clientY - joystickCenterRef.current.y;
+
+        // Normalize to -1 to 1
+        const normalizedX = Math.max(-1, Math.min(1, dx / JOYSTICK_MAX_OFFSET));
+        const normalizedY = Math.max(-1, Math.min(1, dy / JOYSTICK_MAX_OFFSET));
+
+        // Update visual offset (clamped to circle)
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const clampedDistance = Math.min(distance, JOYSTICK_MAX_OFFSET);
+        const angle = Math.atan2(dy, dx);
+        setJoystickOffset({
+          x: Math.cos(angle) * clampedDistance,
+          y: Math.sin(angle) * clampedDistance,
+        });
+
+        // Send to touch input manager
+        touchInput.setMovement(normalizedX, normalizedY);
+      }
+    }
+  }, [JOYSTICK_MAX_OFFSET]);
+
+  const handleJoystickTouchEnd = useCallback((e: React.TouchEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const touchInput = getTouchInputManager();
+
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      const touch = e.changedTouches[i];
+      if (touch.identifier === joystickTouchRef.current) {
+        joystickTouchRef.current = null;
+        joystickCenterRef.current = null;
+        setJoystickOffset({ x: 0, y: 0 });
+        touchInput.setMovement(0, 0);
+      }
+    }
+  }, []);
+
+  // Handle right zone (look)
+  const handleLookTouchStart = useCallback((e: React.TouchEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const touch = e.changedTouches[0];
+    if (lookTouchRef.current === null) {
+      lookTouchRef.current = touch.identifier;
+      lastLookPosRef.current = { x: touch.clientX, y: touch.clientY };
+    }
+  }, []);
+
+  const handleLookTouchMove = useCallback((e: React.TouchEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const touchInput = getTouchInputManager();
+
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      const touch = e.changedTouches[i];
+      if (touch.identifier === lookTouchRef.current && lastLookPosRef.current) {
+        const dx = touch.clientX - lastLookPosRef.current.x;
+        const dy = touch.clientY - lastLookPosRef.current.y;
+
+        // Scale for better sensitivity
+        touchInput.addLookDelta(dx * 2, dy * 2);
+
+        lastLookPosRef.current = { x: touch.clientX, y: touch.clientY };
+      }
+    }
+  }, []);
+
+  const handleLookTouchEnd = useCallback((e: React.TouchEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      const touch = e.changedTouches[i];
+      if (touch.identifier === lookTouchRef.current) {
+        lookTouchRef.current = null;
+        lastLookPosRef.current = null;
+      }
+    }
+  }, []);
+
+  // Handle sprint button
+  const handleSprintTouchStart = useCallback((e: React.TouchEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsSprintPressed(true);
+    getTouchInputManager().setSprint(true);
+  }, []);
+
+  const handleSprintTouchEnd = useCallback((e: React.TouchEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsSprintPressed(false);
+    getTouchInputManager().setSprint(false);
+  }, []);
+
   if (!enabled) return null;
 
   return (
     <>
       {/* Left joystick zone */}
-      <div className="fixed bottom-8 left-8 z-30 w-32 h-32 bg-[#1a1834]/20 backdrop-blur-sm rounded-full border border-white/10 pointer-events-auto">
+      <div
+        className="fixed bottom-8 left-8 z-30 w-32 h-32 bg-[#1a1834]/40 backdrop-blur-sm rounded-full border border-white/20 pointer-events-auto touch-none"
+        onTouchStart={handleJoystickTouchStart}
+        onTouchMove={handleJoystickTouchMove}
+        onTouchEnd={handleJoystickTouchEnd}
+        onTouchCancel={handleJoystickTouchEnd}
+      >
         <div className="absolute inset-0 flex items-center justify-center">
-          <div className="w-12 h-12 rounded-full bg-[#c792f5]/30" />
+          <div
+            className="w-14 h-14 rounded-full bg-[#c792f5]/50 border-2 border-[#c792f5]/80 transition-transform duration-75"
+            style={{
+              transform: `translate(${joystickOffset.x}px, ${joystickOffset.y}px)`,
+            }}
+          />
         </div>
         <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-[8px] text-white/40 font-mono">
           MOVE
@@ -374,9 +520,15 @@ function MobileTouchControls({ enabled }: { enabled: boolean }) {
       </div>
 
       {/* Right touch zone for looking */}
-      <div className="fixed bottom-8 right-8 z-30 w-32 h-32 bg-[#1a1834]/20 backdrop-blur-sm rounded-full border border-white/10 pointer-events-auto">
+      <div
+        className="fixed bottom-8 right-8 z-30 w-32 h-32 bg-[#1a1834]/40 backdrop-blur-sm rounded-full border border-white/20 pointer-events-auto touch-none"
+        onTouchStart={handleLookTouchStart}
+        onTouchMove={handleLookTouchMove}
+        onTouchEnd={handleLookTouchEnd}
+        onTouchCancel={handleLookTouchEnd}
+      >
         <div className="absolute inset-0 flex items-center justify-center">
-          <div className="w-12 h-12 rounded-full bg-[#8eecf5]/30" />
+          <div className="w-14 h-14 rounded-full bg-[#8eecf5]/50 border-2 border-[#8eecf5]/80" />
         </div>
         <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-[8px] text-white/40 font-mono">
           LOOK
@@ -384,8 +536,17 @@ function MobileTouchControls({ enabled }: { enabled: boolean }) {
       </div>
 
       {/* Sprint button */}
-      <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-30 px-6 py-3 bg-[#c792f5]/20 backdrop-blur-sm rounded-lg border border-[#c792f5]/30 pointer-events-auto">
-        <span className="text-[10px] text-[#c792f5] font-mono">SPRINT</span>
+      <div
+        className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-30 px-6 py-3 backdrop-blur-sm rounded-lg border pointer-events-auto touch-none transition-all duration-100 ${
+          isSprintPressed
+            ? 'bg-[#c792f5]/60 border-[#c792f5]/80 scale-95'
+            : 'bg-[#c792f5]/20 border-[#c792f5]/30'
+        }`}
+        onTouchStart={handleSprintTouchStart}
+        onTouchEnd={handleSprintTouchEnd}
+        onTouchCancel={handleSprintTouchEnd}
+      >
+        <span className="text-[10px] text-[#c792f5] font-mono select-none">SPRINT</span>
       </div>
     </>
   );

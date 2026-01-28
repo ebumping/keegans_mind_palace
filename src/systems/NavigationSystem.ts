@@ -724,6 +724,89 @@ export function applyCameraEffects(
 }
 
 // ============================================
+// Touch Input Manager (for mobile controls)
+// ============================================
+
+export interface TouchInputState {
+  // Movement joystick (-1 to 1)
+  moveX: number;
+  moveY: number;
+  // Look delta (accumulated per frame)
+  lookDeltaX: number;
+  lookDeltaY: number;
+  // Sprint button
+  sprint: boolean;
+  // Active state
+  isActive: boolean;
+}
+
+export function createTouchInputState(): TouchInputState {
+  return {
+    moveX: 0,
+    moveY: 0,
+    lookDeltaX: 0,
+    lookDeltaY: 0,
+    sprint: false,
+    isActive: false,
+  };
+}
+
+export class TouchInputManager {
+  private state: TouchInputState;
+
+  constructor() {
+    this.state = createTouchInputState();
+  }
+
+  setMovement(x: number, y: number): void {
+    this.state.moveX = THREE.MathUtils.clamp(x, -1, 1);
+    this.state.moveY = THREE.MathUtils.clamp(y, -1, 1);
+    this.state.isActive = true;
+  }
+
+  addLookDelta(deltaX: number, deltaY: number): void {
+    this.state.lookDeltaX += deltaX;
+    this.state.lookDeltaY += deltaY;
+    this.state.isActive = true;
+  }
+
+  setSprint(sprinting: boolean): void {
+    this.state.sprint = sprinting;
+  }
+
+  getState(): TouchInputState {
+    return this.state;
+  }
+
+  resetLookDelta(): void {
+    this.state.lookDeltaX = 0;
+    this.state.lookDeltaY = 0;
+  }
+
+  reset(): void {
+    this.state.moveX = 0;
+    this.state.moveY = 0;
+    this.state.lookDeltaX = 0;
+    this.state.lookDeltaY = 0;
+    this.state.sprint = false;
+  }
+
+  isActive(): boolean {
+    return this.state.isActive;
+  }
+}
+
+// Singleton touch input manager for global access
+let touchInputManagerInstance: TouchInputManager | null = null;
+
+export function getTouchInputManager(): TouchInputManager {
+  if (!touchInputManagerInstance) {
+    touchInputManagerInstance = new TouchInputManager();
+  }
+  return touchInputManagerInstance;
+}
+
+// ============================================
 // Keyboard Input Manager
 // ============================================
 
@@ -991,12 +1074,45 @@ export class NavigationSystem {
   }
 
   update(delta: number, audioLevels?: AudioLevelsInput, time?: number): CollisionResult {
-    // Process input
+    // Process keyboard input
     processMovementInput(this.movementState, this.inputManager.getState());
     processLookInput(this.movementState, this.inputManager.getState(), this.config);
 
     // Reset mouse delta after processing
     this.inputManager.resetMouseDelta();
+
+    // Process touch input (overrides keyboard if active)
+    const touchInput = getTouchInputManager();
+    const touchState = touchInput.getState();
+    if (touchState.isActive) {
+      // Touch movement (joystick maps to forward/strafe)
+      if (Math.abs(touchState.moveX) > 0.01 || Math.abs(touchState.moveY) > 0.01) {
+        this.movementState.strafe = touchState.moveX;
+        this.movementState.forward = -touchState.moveY; // Invert Y for natural joystick feel
+      }
+
+      // Touch sprint
+      this.movementState.sprinting = touchState.sprint && this.movementState.forward > 0;
+
+      // Touch look (apply sensitivity and update yaw/pitch)
+      if (Math.abs(touchState.lookDeltaX) > 0.01 || Math.abs(touchState.lookDeltaY) > 0.01) {
+        const lookSensitivity = this.config.lookSensitivity * 0.5; // Slightly lower for touch
+        const yawDelta = -touchState.lookDeltaX * lookSensitivity;
+        const pitchDelta = -touchState.lookDeltaY * lookSensitivity;
+
+        this.movementState.yaw += yawDelta;
+
+        const maxPitchRad = this.config.maxPitch * THREE.MathUtils.DEG2RAD;
+        this.movementState.pitch = THREE.MathUtils.clamp(
+          this.movementState.pitch + pitchDelta,
+          -maxPitchRad,
+          maxPitchRad
+        );
+      }
+
+      // Reset touch look delta after processing
+      touchInput.resetLookDelta();
+    }
 
     // Update movement with audio-movement binding
     const collisionResult = updateMovement(
