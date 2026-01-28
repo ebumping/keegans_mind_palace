@@ -63,6 +63,7 @@ export interface PaintingPlacement {
   height: number;                  // Y position (slightly too high or low)
   tilt: number;                    // Rotation around horizontal axis
   wallOffset: number;              // Distance from wall (frame depth)
+  horizontalPosition?: number;     // 0-1 along wall (default 0.5 = center)
 }
 
 export interface PaintingDimensions {
@@ -87,6 +88,7 @@ export interface PaintingConfig {
   dimensions: PaintingDimensions;
   colors: PaintingColors;
   seed: number;
+  wall: import('./room').Wall;     // Which wall this painting is on
   // Audio reactivity settings
   audioBand: 'bass' | 'mid' | 'high';
   audioReactivity: number;         // 0-1, how much audio affects the painting

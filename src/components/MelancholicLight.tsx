@@ -304,8 +304,11 @@ export function MelancholicLight({
     const shafts: LightShaftConfig[] = [];
     const abnormality = 1 - Math.exp(-roomIndex / 20);
 
-    // Number of light shafts based on room size and depth
-    const count = Math.max(1, Math.min(3, Math.floor(abnormality * 3) + 1));
+    // Number of light shafts based on room size — every room gets good lighting
+    // Early rooms get warm golden light, deeper rooms shift to twilight
+    const roomArea = roomDimensions.width * roomDimensions.depth;
+    const areaBasedCount = Math.floor(Math.sqrt(roomArea) / 4);
+    const count = Math.max(2, Math.min(5, areaBasedCount));
 
     for (let i = 0; i < count; i++) {
       const x = rng.range(-roomDimensions.width / 3, roomDimensions.width / 3);
@@ -350,9 +353,11 @@ export function MelancholicLight({
 
     const abnormality = 1 - Math.exp(-roomIndex / 20);
 
-    // Only add window lights at higher depths (more otherworldly)
-    if (abnormality > 0.2 && rng.chance(0.5 + abnormality * 0.3)) {
-      const count = 1 + Math.floor(abnormality * 2);
+    // Every room gets window lights — light from windows that don't exist
+    // Early rooms: warm, inviting light patches. Deeper rooms: more numerous, otherworldly
+    if (rng.chance(0.8 + abnormality * 0.2)) {
+      const roomArea = roomDimensions.width * roomDimensions.depth;
+      const count = Math.max(1, Math.min(4, Math.floor(Math.sqrt(roomArea) / 6) + Math.floor(abnormality * 2)));
 
       for (let i = 0; i < count; i++) {
         // Light patches on walls or floor

@@ -66,12 +66,14 @@ export function generateSculpturesForRoom(
   const abnormality = 1 - Math.exp(-roomIndex / 20);
 
   // Number of sculptures based on room size and depth
-  // Fewer sculptures than paintings—they're more significant
-  const baseCount = Math.floor(roomDimensions.width * roomDimensions.depth / 80);
-  const count = Math.max(0, Math.min(3, baseCount + (level >= WrongnessLevel.NOTICEABLE ? 1 : 0)));
+  // Sculptures are significant — but every room deserves presence
+  const roomArea = roomDimensions.width * roomDimensions.depth;
+  const baseCount = Math.floor(roomArea / 50); // More generous: 1 per 50 sq units
+  const depthBonus = level >= WrongnessLevel.NOTICEABLE ? 1 : 0;
+  const count = Math.max(1, Math.min(8, baseCount + depthBonus));
 
-  // Maybe add a threshold guardian at a doorway
-  if (level >= WrongnessLevel.UNSETTLING && doorways.length > 0 && rng.chance(0.4)) {
+  // Maybe add a threshold guardian at a doorway (higher chance now)
+  if (level >= WrongnessLevel.UNSETTLING && doorways.length > 0 && rng.chance(0.6)) {
     const doorway = rng.pick(doorways);
     const guardianConfig = generateThresholdGuardian(seed + 9001, doorway, roomDimensions, level, rng);
     sculptures.push(guardianConfig);

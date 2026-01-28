@@ -111,7 +111,7 @@ export function Room({
         <Artifact
           dimensions={roomConfig.dimensions}
           seed={roomConfig.seed + 5000}
-          count={Math.floor(3 + roomConfig.abnormality * 5)}
+          count={Math.floor(4 + Math.sqrt(roomConfig.dimensions.width * roomConfig.dimensions.depth) / 3 + roomConfig.abnormality * 3)}
           abnormality={roomConfig.abnormality}
           enabled={true}
         />
