@@ -18,6 +18,7 @@ import * as THREE from 'three';
 import { DustParticles } from './DustParticles';
 import { AtmosphereLights } from './AtmosphereLights';
 import { useAudioSmooth } from '../store/audioStore';
+import { usePerformanceSettings } from '../store/performanceStore';
 
 interface RoomAtmosphereProps {
   /** Room dimensions for scaling effects */
@@ -52,6 +53,7 @@ export function RoomAtmosphere({
   void _seed;
 
   const audioSmooth = useAudioSmooth();
+  const perfSettings = usePerformanceSettings();
 
   // Breathing scale state
   const breatheState = useRef({
@@ -87,18 +89,20 @@ export function RoomAtmosphere({
     groupRef.current.scale.setScalar(breatheState.current.currentScale);
   });
 
-  // Calculate dust particle count based on room size and abnormality
-  const dustCount = Math.floor(
+  // Calculate dust particle count based on room size, abnormality, and performance tier
+  const baseDustCount = Math.floor(
     300 + (dimensions.width * dimensions.depth * 5) + abnormality * 200
   );
+  const dustCount = Math.floor(baseDustCount * perfSettings.particleMultiplier);
 
-  // Calculate light count based on room size
-  const lightCount = Math.max(2, Math.floor(dimensions.width / 4));
+  // Calculate light count based on room size and performance tier
+  const baseLightCount = Math.max(2, Math.floor(dimensions.width / 4));
+  const lightCount = Math.min(baseLightCount, perfSettings.maxLights);
 
   return (
     <group ref={groupRef}>
       {/* Floating dust particles */}
-      {enableDust && (
+      {enableDust && dustCount > 0 && (
         <DustParticles
           count={dustCount}
           bounds={[dimensions.width * 0.9, dimensions.height * 0.9, dimensions.depth * 0.9]}
@@ -114,7 +118,8 @@ export function RoomAtmosphere({
           roomDimensions={dimensions}
           lightCount={lightCount}
           baseIntensity={0.6 + abnormality * 0.3}
-          castShadows={true}
+          castShadows={perfSettings.enableShadows}
+          shadowMapSize={perfSettings.shadowMapSize}
         />
       )}
     </group>
