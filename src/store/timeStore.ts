@@ -75,6 +75,7 @@ export interface TimeStore {
 /**
  * Initialize or retrieve deployment timestamp from localStorage.
  * Each user has their own timeline - timestamp is when THIS user first visited.
+ * If a deployment timestamp exists from the build, use it as a fallback.
  */
 function initializeDeploymentTimestamp(): number {
   const stored = localStorage.getItem(STORAGE_KEY);
@@ -87,8 +88,8 @@ function initializeDeploymentTimestamp(): number {
     }
   }
 
-  // First visit - set deployment time
-  const now = Date.now();
+  // First visit - use deployment timestamp from build if available, otherwise use current time
+  const now = (window as any).deploymentTimestamp || Date.now();
   localStorage.setItem(STORAGE_KEY, now.toString());
   return now;
 }
@@ -188,6 +189,7 @@ export const useTimeStore = create<TimeStore>((set, get) => ({
   /**
    * Update the time store.
    * Call this periodically (e.g., every frame or every second).
+   * Only updates if values have actually changed to prevent unnecessary re-renders.
    */
   update: () => {
     const state = get();
@@ -200,12 +202,20 @@ export const useTimeStore = create<TimeStore>((set, get) => ({
 
     const { level, phase, effects } = calculateGrowlIntensity(hours);
 
-    set({
-      hoursSinceDeployment: hours,
-      growlIntensity: level,
-      growlPhase: phase,
-      growlEffects: effects,
-    });
+    // Only update if values have actually changed to prevent infinite re-renders
+    const needsUpdate =
+      Math.abs(state.hoursSinceDeployment - hours) > 0.01 ||
+      Math.abs(state.growlIntensity - level) > 0.001 ||
+      state.growlPhase !== phase;
+
+    if (needsUpdate) {
+      set({
+        hoursSinceDeployment: hours,
+        growlIntensity: level,
+        growlPhase: phase,
+        growlEffects: effects,
+      });
+    }
   },
 
   /**

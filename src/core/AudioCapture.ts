@@ -157,9 +157,9 @@ export class AudioCapture {
       throw new Error('No media stream available');
     }
 
-    // Create audio context
+    // Create audio context - don't specify sampleRate to let it match the stream's sample rate
+    // This avoids "different sample-rate" errors when connecting MediaStreamSource
     this.audioContext = new AudioContext({
-      sampleRate: 44100,
       latencyHint: 'interactive'
     });
 

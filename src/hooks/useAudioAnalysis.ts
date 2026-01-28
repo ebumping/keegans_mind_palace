@@ -6,6 +6,7 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { AudioCapture, type AudioSource } from '../core/AudioCapture';
 import { AudioAnalyser, DemoAudioGenerator, type AudioLevels } from '../core/AudioAnalyser';
 import { useAudioStore, useAudioCapture } from '../store/audioStore';
@@ -36,19 +37,23 @@ export function useAudioAnalysis(): UseAudioAnalysisReturn {
   const animationFrameRef = useRef<number | null>(null);
 
   const { isCapturing, audioSource, error } = useAudioCapture();
-  const levels = useAudioStore((state) => ({
-    bass: state.bass,
-    mid: state.mid,
-    high: state.high,
-    overall: state.overall,
-    transient: state.transient,
-    transientIntensity: state.transientIntensity,
-  }));
-  const smoothLevels = useAudioStore((state) => ({
-    bassSmooth: state.bassSmooth,
-    midSmooth: state.midSmooth,
-    highSmooth: state.highSmooth,
-  }));
+  const levels = useAudioStore(
+    useShallow((state) => ({
+      bass: state.bass,
+      mid: state.mid,
+      high: state.high,
+      overall: state.overall,
+      transient: state.transient,
+      transientIntensity: state.transientIntensity,
+    }))
+  );
+  const smoothLevels = useAudioStore(
+    useShallow((state) => ({
+      bassSmooth: state.bassSmooth,
+      midSmooth: state.midSmooth,
+      highSmooth: state.highSmooth,
+    }))
+  );
 
   const updateLevels = useAudioStore((state) => state.updateLevels);
   const setCapturing = useAudioStore((state) => state.setCapturing);

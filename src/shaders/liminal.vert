@@ -3,18 +3,11 @@
  *
  * Audio-reactive vertex displacement for walls, floors, and ceilings.
  * Creates breathing/rippling effects driven by frequency data.
+ *
+ * Note: Three.js automatically provides these built-in attributes and uniforms:
+ * - position, normal, uv (attributes)
+ * - modelMatrix, viewMatrix, projectionMatrix, normalMatrix (uniforms)
  */
-
-// Attributes
-attribute vec3 position;
-attribute vec3 normal;
-attribute vec2 uv;
-
-// Three.js built-in uniforms
-uniform mat4 modelMatrix;
-uniform mat4 viewMatrix;
-uniform mat4 projectionMatrix;
-uniform mat3 normalMatrix;
 
 // Time
 uniform float u_time;

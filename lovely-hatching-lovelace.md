@@ -408,11 +408,11 @@ keegans_mind_palace/
 **Files:** `src/systems/NavigationSystem.ts`
 
 **Tasks:**
-- [ ] Implement WASD/arrow key movement with smooth acceleration
-- [ ] Add mouse look controls for camera rotation
-- [ ] Create collision detection with room boundaries
-- [ ] Implement doorway detection and room transition triggers
-- [ ] Add subtle camera sway based on audio levels (disorientation effect)
+- [x] Implement WASD/arrow key movement with smooth acceleration
+- [x] Add mouse look controls for camera rotation
+- [x] Create collision detection with room boundaries
+- [x] Implement doorway detection and room transition triggers
+- [x] Add subtle camera sway based on audio levels (disorientation effect)
 
 ---
 
@@ -421,11 +421,11 @@ keegans_mind_palace/
 **Files:** `src/systems/TransitionSystem.ts`
 
 **Tasks:**
-- [ ] Create smooth fade/warp transitions between rooms
-- [ ] Implement procedural room generation on transition (infinite exploration)
-- [ ] Add transition effects: zoom, dissolve, color shift (audio-synced)
-- [ ] Store visited room seeds for backtracking consistency
-- [ ] Create "impossible transition" effects (entering same room from different angles)
+- [x] Create smooth fade/warp transitions between rooms
+- [x] Implement procedural room generation on transition (infinite exploration)
+- [x] Add transition effects: zoom, dissolve, color shift (audio-synced)
+- [x] Store visited room seeds for backtracking consistency
+- [x] Create "impossible transition" effects (entering same room from different angles)
 
 ---
 
@@ -436,11 +436,11 @@ keegans_mind_palace/
 **Files:** `src/components/UI/AudioPermission.tsx`, `src/components/UI/Controls.tsx`
 
 **Tasks:**
-- [ ] Create audio permission request modal with pale-strata styling
-- [ ] Add minimal controls overlay (audio source toggle, fullscreen)
-- [ ] Implement audio level indicator (subtle, non-intrusive)
-- [ ] Add "how to navigate" hints that fade after first movement
-- [ ] Create mobile-responsive touch controls fallback
+- [x] Create audio permission request modal with pale-strata styling
+- [x] Add minimal controls overlay (audio source toggle, fullscreen)
+- [x] Implement audio level indicator (subtle, non-intrusive)
+- [x] Add "how to navigate" hints that fade after first movement
+- [x] Create mobile-responsive touch controls fallback
 
 ---
 
@@ -449,12 +449,12 @@ keegans_mind_palace/
 **Files:** `.github/workflows/deploy.yml`, `vite.config.ts`
 
 **Tasks:**
-- [ ] Configure Vite for static build with correct base path for `keegans_mind_palace` repo
-- [ ] Create GitHub Actions workflow for GitHub Pages deployment
-- [ ] Add build step with Node.js 20
-- [ ] Configure automatic deployment on push to main branch
-- [ ] Store deployment timestamp for Growl system initialization
-- [ ] Add build status badge to README
+- [x] Configure Vite for static build with correct base path for `keegans_mind_palace` repo
+- [x] Create GitHub Actions workflow for GitHub Pages deployment
+- [x] Add build step with Node.js 20
+- [x] Configure automatic deployment on push to main branch
+- [x] Store deployment timestamp for Growl system initialization
+- [x] Add build status badge to README
 
 ---
 
@@ -465,13 +465,13 @@ keegans_mind_palace/
 **Files:** Multiple
 
 **Tasks:**
-- [ ] Use your Playwright and frontend-design skill to verify bloom and glow effects render correctly at 1920x1080
-- [ ] Use your Playwright and frontend-design skill to check audio reactive materials respond visibly to frequency changes
-- [ ] Use your Playwright and frontend-design skill to verify room transitions are smooth without frame drops
-- [ ] Use your Playwright and frontend-design skill to ensure color palette matches pale-strata aesthetic (#c792f5, #8eecf5, #1a1834)
-- [ ] Use your Playwright and frontend-design skill to verify post-processing chain (bloom, chromatic aberration, vignette) creates liminal atmosphere
-- [ ] Use your Playwright and frontend-design skill to test circuitry pattern overlay visibility and pulse animation
-- [ ] Use your Playwright and frontend-design skill to verify glitch effects trigger on audio transients
+- [x] Use your Playwright and frontend-design skill to verify bloom and glow effects render correctly at 1920x1080
+- [x] Use your Playwright and frontend-design skill to check audio reactive materials respond visibly to frequency changes
+- [x] Use your Playwright and frontend-design skill to verify room transitions are smooth without frame drops
+- [x] Use your Playwright and frontend-design skill to ensure color palette matches pale-strata aesthetic (#c792f5, #8eecf5, #1a1834)
+- [x] Use your Playwright and frontend-design skill to verify post-processing chain (bloom, chromatic aberration, vignette) creates liminal atmosphere
+- [x] Use your Playwright and frontend-design skill to test circuitry pattern overlay visibility and pulse animation
+- [x] Use your Playwright and frontend-design skill to verify glitch effects trigger on audio transients
 
 ---
 
