@@ -207,16 +207,13 @@ export const useAudioSmooth = () =>
 
 export const useAudioHistory = () =>
   useAudioStore(
-    useShallow((state) => {
-      // Only recompute arrays when historyVersion changes
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const _version = state.historyVersion;
-      return {
-        bassHistory: bassRingBuffer.toArray(),
-        midHistory: midRingBuffer.toArray(),
-        highHistory: highRingBuffer.toArray(),
-      };
-    })
+    useShallow((state) => ({
+      // historyVersion is used as a dependency to trigger recomputation
+      historyVersion: state.historyVersion,
+      bassHistory: bassRingBuffer.toArray(),
+      midHistory: midRingBuffer.toArray(),
+      highHistory: highRingBuffer.toArray(),
+    }))
   );
 
 // Export raw ring buffers for high-performance shader access

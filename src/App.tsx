@@ -17,7 +17,7 @@ import { getTransitionSystem } from './systems/TransitionSystem'
 import { CollisionDebug } from './debug/CollisionDebug'
 import { DebugOverlay } from './debug/DebugOverlay'
 import { getWrongnessSystem } from './systems/WrongnessSystem'
-import { usePerformanceStore, usePerformanceSettings } from './store/performanceStore'
+import { usePerformanceStore, usePerformanceSettings, type PerformanceSettings } from './store/performanceStore'
 
 // Pale-strata color palette
 const COLORS = {
@@ -77,6 +77,59 @@ function GrowlReactiveChromaticAberration() {
       modulationOffset={0.5}
     />
   )
+}
+
+/**
+ * Post-Processing Effects Component
+ * Renders different effect configurations based on performance tier.
+ * This avoids TypeScript issues with conditional children in EffectComposer.
+ */
+function PostProcessingEffects({ settings }: { settings: PerformanceSettings }) {
+  if (!settings.enablePostProcessing) {
+    return null
+  }
+
+  // High quality: all effects
+  if (settings.enableBloom && settings.enableChromaticAberration && settings.enableGlitch && settings.enableVignette) {
+    return (
+      <EffectComposer>
+        <Bloom intensity={0.5} luminanceThreshold={0.2} luminanceSmoothing={0.9} mipmapBlur />
+        <GrowlReactiveChromaticAberration />
+        <GlitchEffect />
+        <Vignette offset={0.3} darkness={0.7} blendFunction={BlendFunction.NORMAL} />
+      </EffectComposer>
+    )
+  }
+
+  // Medium quality: bloom + vignette only
+  if (settings.enableBloom && settings.enableVignette) {
+    return (
+      <EffectComposer>
+        <Bloom intensity={0.5} luminanceThreshold={0.2} luminanceSmoothing={0.9} mipmapBlur />
+        <Vignette offset={0.3} darkness={0.7} blendFunction={BlendFunction.NORMAL} />
+      </EffectComposer>
+    )
+  }
+
+  // Bloom only
+  if (settings.enableBloom) {
+    return (
+      <EffectComposer>
+        <Bloom intensity={0.5} luminanceThreshold={0.2} luminanceSmoothing={0.9} mipmapBlur />
+      </EffectComposer>
+    )
+  }
+
+  // Vignette only
+  if (settings.enableVignette) {
+    return (
+      <EffectComposer>
+        <Vignette offset={0.3} darkness={0.7} blendFunction={BlendFunction.NORMAL} />
+      </EffectComposer>
+    )
+  }
+
+  return null
 }
 
 /**
@@ -281,34 +334,7 @@ function Scene({ showCollisionDebug = false }: SceneProps) {
       <NavigationController roomConfig={roomConfig} onTransition={handleTransition} />
 
       {/* Post-processing effects pipeline - conditional based on performance tier */}
-      {perfSettings.enablePostProcessing && (
-        <EffectComposer>
-          {/* Bloom for glowing elements */}
-          {perfSettings.enableBloom && (
-            <Bloom
-              intensity={0.5}
-              luminanceThreshold={0.2}
-              luminanceSmoothing={0.9}
-              mipmapBlur
-            />
-          )}
-
-          {/* Growl-reactive chromatic aberration for color fringing */}
-          {perfSettings.enableChromaticAberration && <GrowlReactiveChromaticAberration />}
-
-          {/* Glitch effects - audio and Growl-triggered distortions */}
-          {perfSettings.enableGlitch && <GlitchEffect />}
-
-          {/* Vignette for liminal atmosphere */}
-          {perfSettings.enableVignette && (
-            <Vignette
-              offset={0.3}
-              darkness={0.7}
-              blendFunction={BlendFunction.NORMAL}
-            />
-          )}
-        </EffectComposer>
-      )}
+      <PostProcessingEffects settings={perfSettings} />
     </>
   )
 }
