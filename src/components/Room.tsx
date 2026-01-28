@@ -16,6 +16,7 @@ import { Paintings } from './Painting';
 import { Sculptures } from './Sculpture';
 import { Furniture } from './Furniture';
 import { MelancholicLight } from './MelancholicLight';
+import { Doorways } from './Doorways';
 import type { Wall, GeneratedRoom, RoomConfig } from '../types/room';
 
 interface RoomProps {
@@ -158,6 +159,17 @@ export function Room({
           roomDimensions={roomConfig.dimensions}
           roomIndex={roomConfig.index}
           seed={roomConfig.seed + 20000}
+          enabled={true}
+        />
+      )}
+
+      {/* Doorway Portals */}
+      {roomConfig && (
+        <Doorways
+          doorways={roomConfig.doorways}
+          doorwayGeometry={roomConfig.doorwayGeometry}
+          dimensions={roomConfig.dimensions}
+          seed={roomConfig.seed + 15000}
           enabled={true}
         />
       )}
