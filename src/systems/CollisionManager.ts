@@ -154,8 +154,7 @@ export class CollisionManager {
       wall: Wall,
       wallMin: THREE.Vector3,
       wallMax: THREE.Vector3,
-      axis: 'x' | 'z',
-      wallLength: number
+      axis: 'x' | 'z'
     ): void => {
       const doorways = doorwaysOnWall(wall);
 
@@ -240,8 +239,7 @@ export class CollisionManager {
       'north',
       new THREE.Vector3(-width / 2 - wallThickness, 0, -depth / 2 - wallThickness),
       new THREE.Vector3(width / 2 + wallThickness, height, -depth / 2),
-      'x',
-      width
+      'x'
     );
 
     // South wall (positive Z) - runs along X axis
@@ -249,8 +247,7 @@ export class CollisionManager {
       'south',
       new THREE.Vector3(-width / 2 - wallThickness, 0, depth / 2),
       new THREE.Vector3(width / 2 + wallThickness, height, depth / 2 + wallThickness),
-      'x',
-      width
+      'x'
     );
 
     // East wall (positive X) - runs along Z axis
@@ -258,8 +255,7 @@ export class CollisionManager {
       'east',
       new THREE.Vector3(width / 2, 0, -depth / 2),
       new THREE.Vector3(width / 2 + wallThickness, height, depth / 2),
-      'z',
-      depth
+      'z'
     );
 
     // West wall (negative X) - runs along Z axis
@@ -267,8 +263,7 @@ export class CollisionManager {
       'west',
       new THREE.Vector3(-width / 2 - wallThickness, 0, -depth / 2),
       new THREE.Vector3(-width / 2, height, depth / 2),
-      'z',
-      depth
+      'z'
     );
 
     // Floor
