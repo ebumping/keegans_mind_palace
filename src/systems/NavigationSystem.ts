@@ -375,11 +375,17 @@ export function updateMovement(
     }
 
     // Safety clamp: ensure player stays within room bounds
-    // This is a fallback in case raycasting misses
+    // But allow passage through doorways by not clamping near door openings
     const halfWidth = roomConfig.dimensions.width / 2 - config.playerRadius;
     const halfDepth = roomConfig.dimensions.depth / 2 - config.playerRadius;
-    state.position.x = THREE.MathUtils.clamp(state.position.x, -halfWidth, halfWidth);
-    state.position.z = THREE.MathUtils.clamp(state.position.z, -halfDepth, halfDepth);
+
+    // Check if the player is currently in a doorway trigger zone
+    const inDoorwayZone = collisionManager.isInDoorway(state.position, config.playerRadius);
+
+    if (!inDoorwayZone) {
+      state.position.x = THREE.MathUtils.clamp(state.position.x, -halfWidth, halfWidth);
+      state.position.z = THREE.MathUtils.clamp(state.position.z, -halfDepth, halfDepth);
+    }
   } else {
     // No room config - allow free movement (fallback to legacy)
     collisionResult = checkCollision(_newPosition, config.playerRadius, roomConfig!);
@@ -568,9 +574,9 @@ export function checkTransitionTrigger(
         .setY(0)
         .normalize();
 
-      // Check if moving towards doorway
+      // Check if moving towards doorway (relaxed threshold for easier triggering)
       const velocityDir = state.velocity.clone().setY(0).normalize();
-      const movingTowards = velocityDir.dot(towardsDoorway) > 0.3;
+      const movingTowards = velocityDir.dot(towardsDoorway) > 0.1;
 
       if (movingTowards && state.isMoving) {
         // Calculate progress through doorway
@@ -1138,7 +1144,7 @@ export class NavigationSystem {
 
     // Check for transition triggers
     const trigger = checkTransitionTrigger(this.movementState, this.roomConfig);
-    if (trigger && trigger.progress > 0.8) {
+    if (trigger && trigger.progress >= 0.6) {
       this.onTransition?.(trigger);
     }
 
