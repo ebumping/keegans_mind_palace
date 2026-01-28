@@ -4,10 +4,8 @@ import { EffectComposer, Bloom, ChromaticAberration, Vignette } from '@react-thr
 import { BlendFunction } from 'postprocessing'
 import * as THREE from 'three'
 import { Room } from './components/Room'
-import { GrowlController, GrowlDebugPanel } from './components/GrowlController'
-import { GlitchDebugPanel } from './components/GlitchController'
+import { GrowlController } from './components/GrowlController'
 import { GlitchEffect } from './components/GlitchEffect'
-import { TransitionEffect, CameraTransitionEffect } from './components/TransitionEffect'
 import { AudioPermission } from './components/UI/AudioPermission'
 import { Controls } from './components/UI/Controls'
 import { useTimeStore } from './store/timeStore'
@@ -16,6 +14,9 @@ import { useTransition } from './hooks/useTransition'
 import { RoomGenerator } from './generators/RoomGenerator'
 import type { RoomConfig } from './types/room'
 import { getTransitionSystem } from './systems/TransitionSystem'
+import { CollisionDebug } from './debug/CollisionDebug'
+import { DebugOverlay } from './debug/DebugOverlay'
+import { getWrongnessSystem } from './systems/WrongnessSystem'
 
 // Pale-strata color palette
 const COLORS = {
@@ -25,21 +26,6 @@ const COLORS = {
   secondary: '#8eecf5',
 }
 
-/**
- * Growl-Reactive Fog Component
- * Adjusts fog density based on Growl intensity for atmospheric dread.
- */
-function GrowlReactiveFog() {
-  // Use primitive selector to avoid object reference issues
-  const fogDensityBonus = useTimeStore((state) => state.growlEffects.fogDensityBonus)
-  const baseDensity = 0.05
-  const density = baseDensity + fogDensityBonus
-
-  // Memoize args array to prevent infinite re-renders
-  const fogArgs = useMemo(() => [COLORS.fogColor, density] as const, [density])
-
-  return <fogExp2 attach="fog" args={fogArgs} />
-}
 
 /**
  * Growl-Reactive Chromatic Aberration
@@ -152,7 +138,11 @@ function PointerLockOverlay() {
   )
 }
 
-function Scene() {
+interface SceneProps {
+  showCollisionDebug?: boolean;
+}
+
+function Scene({ showCollisionDebug = false }: SceneProps) {
   // Current room state
   const [currentRoomIndex, setCurrentRoomIndex] = useState(0)
   const [roomConfig, setRoomConfig] = useState<RoomConfig | null>(null)
@@ -172,6 +162,10 @@ function Scene() {
   useEffect(() => {
     const config = generator.generateConfig(currentRoomIndex, null)
     setRoomConfig(config)
+
+    // Update wrongness system depth
+    const wrongnessSystem = getWrongnessSystem()
+    wrongnessSystem.setDepth(currentRoomIndex)
   }, [currentRoomIndex, generator])
 
   // Handle transition trigger from navigation
@@ -222,6 +216,9 @@ function Scene() {
       {/* Procedurally generated room */}
       <Room roomIndex={currentRoomIndex} />
 
+      {/* Collision debug visualization */}
+      <CollisionDebug enabled={showCollisionDebug} />
+
       {/* Transition effects */}
       {/*<TransitionEffect enabled={true} />*/}
       {/*<CameraTransitionEffect enabled={true} baseFOV={75} />*/}
@@ -264,6 +261,7 @@ function App() {
 
   // Debug panels
   const [showDebug, setShowDebug] = useState(false)
+  const [showCollisionDebug, setShowCollisionDebug] = useState(false)
 
   // Mobile touch controls (detect touch device)
   const [isTouchDevice, setIsTouchDevice] = useState(false)
@@ -287,6 +285,11 @@ function App() {
     // Navigation hints will be handled by Controls component
   }, [])
 
+  // Handle collision debug toggle from debug overlay
+  const handleCollisionDebugToggle = useCallback((enabled: boolean) => {
+    setShowCollisionDebug(enabled)
+  }, [])
+
   return (
     <>
       <Canvas
@@ -302,7 +305,7 @@ function App() {
           toneMappingExposure: 1.0,
         }}
       >
-        <Scene />
+        <Scene showCollisionDebug={showCollisionDebug} />
       </Canvas>
 
       {/* Audio permission modal */}
@@ -322,13 +325,11 @@ function App() {
       {/* Pointer lock overlay with instructions */}
       <PointerLockOverlay />
 
-      {/* Debug Panels (outside Canvas, HTML overlay) */}
-      {showDebug && (
-        <>
-          <GrowlDebugPanel />
-          <GlitchDebugPanel />
-        </>
-      )}
+      {/* Debug Overlay - unified debug panel system */}
+      <DebugOverlay
+        enabled={showDebug}
+        onCollisionDebugToggle={handleCollisionDebugToggle}
+      />
 
       {/* Toggle debug panel with 'G' key */}
       <DebugToggle onToggle={() => setShowDebug(prev => !prev)} />

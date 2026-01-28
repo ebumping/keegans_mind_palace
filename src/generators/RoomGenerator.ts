@@ -3,6 +3,12 @@
  *
  * Creates procedural room geometry with configurable dimensions,
  * doorway cutouts, and audio-reactive scaling.
+ *
+ * Now enhanced with:
+ * - Non-rectangular room shapes (L, H, triangle, hexagon, spiral, irregular, curved)
+ * - Room archetypes with specific architectural intent
+ * - Vertical complexity (sunken, raised, mezzanine, split)
+ * - Wrongness escalation based on depth and Growl
  */
 
 import * as THREE from 'three';
@@ -12,6 +18,8 @@ import {
   Wall,
   WallFeature,
   FloorType,
+  RoomShape,
+  RoomArchetype,
 } from '../types/room';
 import type {
   RoomDimensions,
@@ -22,6 +30,8 @@ import type {
   RoomConfig,
   AudioLevels,
   GeneratedRoom,
+  RoomShapeConfig,
+  Point2D,
 } from '../types/room';
 import {
   createLiminalMaterial,
@@ -29,6 +39,21 @@ import {
   type AudioData,
   type LiminalMaterialConfig,
 } from '../systems/AudioReactiveSystem';
+import {
+  getRoomShapeGenerator,
+  getShapeWeights,
+  selectShape,
+} from './RoomShapeGenerator';
+import {
+  getArchetypeRoomGenerator,
+  selectArchetype,
+} from './ArchetypeRoomGenerator';
+import { getVerticalElementGenerator } from './VerticalElementGenerator';
+import {
+  generateWrongnessConfig,
+  applyWrongnessToShape,
+  getWrongnessSystem,
+} from '../systems/WrongnessSystem';
 
 // Pale-strata color palette
 const COLORS = {
@@ -52,12 +77,12 @@ export interface RoomGeneratorOptions {
 
 const DEFAULT_OPTIONS: Required<RoomGeneratorOptions> = {
   baseSeed: 42,
-  minWidth: 4,
-  maxWidth: 20,
-  minHeight: 3,
-  maxHeight: 8,
-  minDepth: 4,
-  maxDepth: 20,
+  minWidth: 15,
+  maxWidth: 60,
+  minHeight: 6,
+  maxHeight: 20,
+  minDepth: 15,
+  maxDepth: 60,
 };
 
 export class RoomGenerator {
@@ -75,11 +100,56 @@ export class RoomGenerator {
     const rng = new SeededRandom(seed);
     const abnormality = getAbnormalityFactor(roomIndex);
 
+    // Get Growl intensity for wrongness calculation
+    const wrongnessSystem = getWrongnessSystem();
+    const growlIntensity = wrongnessSystem.getGrowlIntensity();
+
+    // Select room archetype based on depth and abnormality
+    const archetype = selectArchetype(roomIndex, abnormality, rng);
+    const archetypeGenerator = getArchetypeRoomGenerator();
+
+    // Generate dimensions based on archetype
     const type = this.getRoomType(rng, abnormality);
-    const dimensions = this.getRoomDimensions(rng, type, abnormality);
+    let dimensions: RoomDimensions;
+
+    if (archetype !== RoomArchetype.GENERIC) {
+      dimensions = archetypeGenerator.generateDimensions(archetype, abnormality, rng);
+    } else {
+      dimensions = this.getRoomDimensions(rng, type, abnormality);
+    }
+
+    // Generate non-rectangular room shape
+    const shapeWeights = getShapeWeights(roomIndex);
+    const shapeType = selectShape(rng, shapeWeights);
+    const shapeGenerator = getRoomShapeGenerator();
+    let shape = shapeGenerator.generate(shapeType, dimensions, abnormality, seed);
+
+    // Generate wrongness configuration
+    const wrongness = generateWrongnessConfig(roomIndex, growlIntensity, seed);
+
+    // Apply wrongness to shape (skew, angle variance)
+    shape = applyWrongnessToShape(shape, wrongness, seed + 5000);
+
+    // Generate vertical elements
+    const verticalElementGenerator = getVerticalElementGenerator();
+    const verticalElements = verticalElementGenerator.generate(
+      shape,
+      dimensions,
+      roomIndex,
+      abnormality,
+      seed + 3000
+    );
+
     const complexity = this.getComplexity(type, rng, abnormality);
     const doorwayCount = this.getDoorwayCount(type, rng);
-    const doorways = this.placeDoorways(roomIndex, dimensions, doorwayCount, seed, entryWall);
+    const doorways = this.placeDoorwaysForShape(
+      roomIndex,
+      dimensions,
+      shape,
+      doorwayCount,
+      seed,
+      entryWall
+    );
     const doorwayGeometry = this.getDoorwayGeometry(rng, abnormality);
     const wallFeatures = this.getWallFeatures(rng, abnormality);
     const floorType = this.getFloorType(rng, abnormality);
@@ -99,7 +169,28 @@ export class RoomGenerator {
       nonEuclidean,
       abnormality,
       complexity,
+      // New spatial design properties
+      shape,
+      archetype,
+      verticalElements,
+      wrongness,
     };
+  }
+
+  /**
+   * Place doorways on non-rectangular shapes
+   */
+  private placeDoorwaysForShape(
+    roomIndex: number,
+    dimensions: RoomDimensions,
+    _shape: RoomShapeConfig,
+    count: number,
+    seed: number,
+    entryWall: Wall | null
+  ): DoorwayPlacement[] {
+    // For now, fall back to rectangular doorway placement
+    // TODO: Place doorways on polygon edges for non-rectangular shapes
+    return this.placeDoorways(roomIndex, dimensions, count, seed, entryWall);
   }
 
   /**
@@ -215,41 +306,41 @@ export class RoomGenerator {
     type: RoomType,
     abnormality: number
   ): RoomDimensions {
-    // Base ranges by type
+    // Base ranges by type - scaled up for proper first-person feel
     let baseWidth: number;
     let baseHeight: number;
     let baseDepth: number;
 
     switch (type) {
       case RoomType.CORRIDOR:
-        baseWidth = rng.range(3, 5);
-        baseHeight = rng.range(2.5, 4);
-        baseDepth = rng.range(10, 20);
+        baseWidth = rng.range(8, 12);
+        baseHeight = rng.range(6, 10);
+        baseDepth = rng.range(30, 60);
         break;
       case RoomType.CHAMBER:
-        baseWidth = rng.range(10, 16);
-        baseHeight = rng.range(5, 8);
-        baseDepth = rng.range(10, 16);
+        baseWidth = rng.range(30, 50);
+        baseHeight = rng.range(12, 20);
+        baseDepth = rng.range(30, 50);
         break;
       case RoomType.ALCOVE:
-        baseWidth = rng.range(3, 5);
-        baseHeight = rng.range(2.5, 3.5);
-        baseDepth = rng.range(3, 5);
+        baseWidth = rng.range(10, 15);
+        baseHeight = rng.range(6, 8);
+        baseDepth = rng.range(10, 15);
         break;
       case RoomType.JUNCTION:
-        baseWidth = rng.range(6, 10);
-        baseHeight = rng.range(3, 5);
-        baseDepth = rng.range(6, 10);
+        baseWidth = rng.range(20, 35);
+        baseHeight = rng.range(8, 12);
+        baseDepth = rng.range(20, 35);
         break;
       case RoomType.IMPOSSIBLE:
-        baseWidth = rng.range(4, 15);
-        baseHeight = rng.range(3, 10);
-        baseDepth = rng.range(4, 15);
+        baseWidth = rng.range(15, 45);
+        baseHeight = rng.range(8, 25);
+        baseDepth = rng.range(15, 45);
         break;
       default: // STANDARD
-        baseWidth = rng.range(this.options.minWidth, 12);
-        baseHeight = rng.range(this.options.minHeight, 5);
-        baseDepth = rng.range(this.options.minDepth, 12);
+        baseWidth = rng.range(this.options.minWidth, 40);
+        baseHeight = rng.range(this.options.minHeight, 12);
+        baseDepth = rng.range(this.options.minDepth, 40);
     }
 
     // Apply abnormality scaling - rooms get more extreme deeper
@@ -316,8 +407,8 @@ export class RoomGenerator {
       placements.push({
         wall,
         position: rng.range(0.2, 0.8), // Keep away from corners
-        width: rng.range(1.2, 2.0),
-        height: rng.range(2.2, Math.min(2.8, dimensions.height - 0.5)),
+        width: rng.range(2.5, 4.0), // Wider doorways for larger spaces
+        height: rng.range(3.5, Math.min(5.0, dimensions.height - 1.0)), // Taller doorways
         leadsTo: roomIndex + i + 1,
       });
     }
@@ -411,6 +502,11 @@ export class RoomGenerator {
     wallGeoms: THREE.BufferGeometry[];
     wallMats: THREE.Material[];
   } {
+    // Use polygon-based wall creation for non-rectangular shapes
+    if (config.shape && config.shape.type !== RoomShape.RECTANGLE) {
+      return this.createWallsFromPolygon(config);
+    }
+
     const { dimensions, doorways, complexity } = config;
     const { width, height, depth } = dimensions;
 
@@ -506,6 +602,71 @@ export class RoomGenerator {
     return { wallMeshes, wallGeoms, wallMats };
   }
 
+  /**
+   * Create walls from polygon vertices for non-rectangular room shapes
+   */
+  private createWallsFromPolygon(config: RoomConfig): {
+    wallMeshes: THREE.Mesh[];
+    wallGeoms: THREE.BufferGeometry[];
+    wallMats: THREE.Material[];
+  } {
+    const { shape, dimensions } = config;
+    if (!shape) {
+      // Fallback to rectangular
+      return this.createWalls({ ...config, shape: undefined });
+    }
+
+    const wallMeshes: THREE.Mesh[] = [];
+    const wallGeoms: THREE.BufferGeometry[] = [];
+    const wallMats: THREE.Material[] = [];
+
+    const material = this.createWallMaterial(config);
+    wallMats.push(material);
+
+    const height = dimensions.height;
+    const vertices = shape.vertices;
+
+    // Create a wall segment for each edge of the polygon
+    for (let i = 0; i < vertices.length; i++) {
+      const v1 = vertices[i];
+      const v2 = vertices[(i + 1) % vertices.length];
+
+      // Calculate wall dimensions and orientation
+      const dx = v2.x - v1.x;
+      const dy = v2.y - v1.y;
+      const wallLength = Math.sqrt(dx * dx + dy * dy);
+
+      if (wallLength < 0.1) continue; // Skip degenerate edges
+
+      // Wall center position (x, y are floor coordinates, z is height)
+      const centerX = (v1.x + v2.x) / 2;
+      const centerY = (v1.y + v2.y) / 2;
+
+      // Rotation to face inward (perpendicular to edge)
+      const angle = Math.atan2(dy, dx);
+
+      // Create wall geometry
+      const geometry = new THREE.PlaneGeometry(wallLength, height, 2, 2);
+      this.applyUVMapping(geometry, wallLength, height);
+
+      const mesh = new THREE.Mesh(geometry, material);
+
+      // Position: center of wall edge, half height up
+      // Note: v1.x,v1.y are floor coordinates (x, z in 3D), y is up
+      mesh.position.set(centerX, height / 2, centerY);
+
+      // Rotate to align with edge and face inward
+      mesh.rotation.set(0, -angle + Math.PI / 2, 0);
+
+      mesh.receiveShadow = true;
+
+      wallMeshes.push(mesh);
+      wallGeoms.push(geometry);
+    }
+
+    return { wallMeshes, wallGeoms, wallMats };
+  }
+
   private createWallWithCutouts(
     wallWidth: number,
     wallHeight: number,
@@ -554,14 +715,20 @@ export class RoomGenerator {
     floorGeom: THREE.BufferGeometry;
     floorMat: THREE.Material;
   } {
-    const { dimensions, floorType, complexity } = config;
+    const { dimensions, floorType, complexity, shape } = config;
     const { width, depth } = dimensions;
 
-    const segments = Math.max(1, complexity);
-    const geometry = new THREE.PlaneGeometry(width, depth, segments, segments);
-    this.applyUVMapping(geometry, width, depth);
-
     const material = this.createFloorMaterial(floorType, config.abnormality, config);
+    let geometry: THREE.BufferGeometry;
+
+    // Use polygon shape for non-rectangular rooms
+    if (shape && shape.type !== RoomShape.RECTANGLE && shape.vertices.length >= 3) {
+      geometry = this.createPolygonFloor(shape.vertices);
+    } else {
+      const segments = Math.max(1, complexity);
+      geometry = new THREE.PlaneGeometry(width, depth, segments, segments);
+      this.applyUVMapping(geometry, width, depth);
+    }
 
     const mesh = new THREE.Mesh(geometry, material);
     mesh.rotation.x = -Math.PI / 2;
@@ -571,17 +738,73 @@ export class RoomGenerator {
     return { floorMesh: mesh, floorGeom: geometry, floorMat: material };
   }
 
+  /**
+   * Create floor geometry from polygon vertices
+   */
+  private createPolygonFloor(vertices: Point2D[]): THREE.BufferGeometry {
+    const shape = new THREE.Shape();
+
+    if (vertices.length < 3) {
+      return new THREE.PlaneGeometry(1, 1);
+    }
+
+    // Build shape from vertices
+    shape.moveTo(vertices[0].x, vertices[0].y);
+    for (let i = 1; i < vertices.length; i++) {
+      shape.lineTo(vertices[i].x, vertices[i].y);
+    }
+    shape.closePath();
+
+    const geometry = new THREE.ShapeGeometry(shape, 2);
+
+    // Apply UV mapping based on bounding box
+    const positions = geometry.getAttribute('position');
+    const uvs = geometry.getAttribute('uv');
+
+    if (positions && uvs) {
+      // Find bounds
+      let minX = Infinity, maxX = -Infinity;
+      let minY = Infinity, maxY = -Infinity;
+      for (const v of vertices) {
+        minX = Math.min(minX, v.x);
+        maxX = Math.max(maxX, v.x);
+        minY = Math.min(minY, v.y);
+        maxY = Math.max(maxY, v.y);
+      }
+
+      const width = maxX - minX || 1;
+      const depth = maxY - minY || 1;
+
+      // Remap UVs to maintain texture density
+      const uvArray = uvs.array as Float32Array;
+      for (let i = 0; i < uvArray.length; i += 2) {
+        uvArray[i] *= width;
+        uvArray[i + 1] *= depth;
+      }
+      uvs.needsUpdate = true;
+    }
+
+    return geometry;
+  }
+
   private createCeiling(config: RoomConfig): {
     ceilingMesh: THREE.Mesh;
     ceilingGeom: THREE.BufferGeometry;
     ceilingMat: THREE.Material;
   } {
-    const { dimensions, complexity, seed, index, abnormality } = config;
+    const { dimensions, complexity, seed, index, abnormality, shape } = config;
     const { width, height, depth } = dimensions;
 
-    const segments = Math.max(1, complexity);
-    const geometry = new THREE.PlaneGeometry(width, depth, segments, segments);
-    this.applyUVMapping(geometry, width, depth);
+    let geometry: THREE.BufferGeometry;
+
+    // Use polygon shape for non-rectangular rooms
+    if (shape && shape.type !== RoomShape.RECTANGLE && shape.vertices.length >= 3) {
+      geometry = this.createPolygonFloor(shape.vertices);
+    } else {
+      const segments = Math.max(1, complexity);
+      geometry = new THREE.PlaneGeometry(width, depth, segments, segments);
+      this.applyUVMapping(geometry, width, depth);
+    }
 
     // Create audio-reactive liminal material for ceiling
     const materialConfig: LiminalMaterialConfig = {

@@ -412,7 +412,7 @@ function deserializeChange(obj: Record<string, unknown>): VariationChange {
  */
 function generateVariation(
   level: VariationLevel,
-  roomId: number,
+  _roomId: number,
   rng: SeededRandom
 ): Variation {
   const changes: VariationChange[] = [];
@@ -472,7 +472,7 @@ export class PortalVariationSystem {
    * @returns Variation state for the destination room
    */
   processPortalTransition(
-    fromRoomId: number,
+    _fromRoomId: number,
     toRoomId: number,
     depth: number
   ): VariationState {
@@ -599,7 +599,7 @@ export class PortalVariationSystem {
   /**
    * Update the system each frame.
    */
-  update(delta: number): void {
+  update(_delta: number): void {
     // Update global shimmer boost based on Growl intensity
     const { growlIntensity } = useTimeStore.getState();
     useVariationStore.getState().setGlobalShimmerBoost(growlIntensity * 0.5);

@@ -12,6 +12,10 @@ import { RoomGenerator } from '../generators/RoomGenerator';
 import { useAudioLevels } from '../store/audioStore';
 import { RoomAtmosphere } from './RoomAtmosphere';
 import { Artifact } from './Artifact';
+import { Paintings } from './Painting';
+import { Sculptures } from './Sculpture';
+import { Furniture } from './Furniture';
+import { MelancholicLight } from './MelancholicLight';
 import type { Wall, GeneratedRoom, RoomConfig } from '../types/room';
 
 interface RoomProps {
@@ -109,6 +113,51 @@ export function Room({
           seed={roomConfig.seed + 5000}
           count={Math.floor(3 + roomConfig.abnormality * 5)}
           abnormality={roomConfig.abnormality}
+          enabled={true}
+        />
+      )}
+
+      {/* Wall Paintings */}
+      {roomConfig && (
+        <Paintings
+          dimensions={roomConfig.dimensions}
+          roomIndex={roomConfig.index}
+          seed={roomConfig.seed + 8000}
+          wrongness={roomConfig.wrongness}
+          enabled={true}
+        />
+      )}
+
+      {/* Sculptures */}
+      {roomConfig && (
+        <Sculptures
+          dimensions={roomConfig.dimensions}
+          roomIndex={roomConfig.index}
+          seed={roomConfig.seed + 9000}
+          wrongness={roomConfig.wrongness}
+          doorways={roomConfig.doorways}
+          enabled={true}
+        />
+      )}
+
+      {/* Furniture with Intent */}
+      {roomConfig && (
+        <Furniture
+          dimensions={roomConfig.dimensions}
+          roomIndex={roomConfig.index}
+          seed={roomConfig.seed + 10000}
+          archetype={roomConfig.archetype}
+          wrongness={roomConfig.wrongness}
+          enabled={true}
+        />
+      )}
+
+      {/* Melancholic Light - Beauty that makes you sad */}
+      {roomConfig && (
+        <MelancholicLight
+          roomDimensions={roomConfig.dimensions}
+          roomIndex={roomConfig.index}
+          seed={roomConfig.seed + 20000}
           enabled={true}
         />
       )}

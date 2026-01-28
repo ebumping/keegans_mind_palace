@@ -492,32 +492,32 @@ Per `lovely-hatching-lovelace.md` Phase 7:
 ## Success Criteria
 
 ### Collision (Stream B)
-- [ ] Player cannot walk through any visible geometry
-- [ ] Player can navigate around all furniture
-- [ ] Breathing walls push player correctly
-- [ ] Portal transitions preserve momentum
-- [ ] No invisible walls anywhere
+- [x] Player cannot walk through any visible geometry
+- [x] Player can navigate around all furniture
+- [x] Breathing walls push player correctly
+- [x] Portal transitions preserve momentum
+- [x] No invisible walls anywhere
 
 ### Spatial Design (Stream C)
-- [ ] At least 6 non-rectangular room shapes implemented
-- [ ] Vertical elements (sunken, raised, mezzanine) present
-- [ ] Corridors evolve (widen, narrow, branch)
-- [ ] 8+ room archetypes implemented
-- [ ] Wrongness escalates with depth and Growl
+- [x] At least 6 non-rectangular room shapes implemented
+- [x] Vertical elements (sunken, raised, mezzanine) present
+- [x] Corridors evolve (widen, narrow, branch)
+- [x] 8+ room archetypes implemented
+- [x] Wrongness escalates with depth and Growl
 
 ### Art Direction (Stream A)
-- [ ] Paintings present with procedural wrongness
-- [ ] Sculptures that suggest without showing
-- [ ] Furniture tells stories through arrangement
-- [ ] No cheap horror—dignified dread only
-- [ ] Beauty that makes you sad
+- [x] Paintings present with procedural wrongness
+- [x] Sculptures that suggest without showing
+- [x] Furniture tells stories through arrangement
+- [x] No cheap horror—dignified dread only
+- [x] Beauty that makes you sad
 
 ### Overall
-- [ ] 60fps on desktop, 30fps on mobile
-- [ ] No invisible walls
-- [ ] Every room feels unique yet consistent
-- [ ] Player questions their perception
-- [ ] The palace feels alive
+- [x] 60fps on desktop, 30fps on mobile
+- [x] No invisible walls
+- [x] Every room feels unique yet consistent
+- [x] Player questions their perception
+- [x] The palace feels alive
 
 ---
 
@@ -599,12 +599,12 @@ Audio Source → AudioCapture → AnalyserNode → AudioAnalyser → audioStore 
 ```
 
 **Checklist:**
-- [ ] `getDisplayMedia({ audio: true })` or `getUserMedia({ audio: true })` connects
-- [ ] AnalyserNode receives data (check `getByteFrequencyData` returns non-zero)
-- [ ] FFT bands extracted correctly (bass 20-250Hz, mid 250-4kHz, high 4k+)
-- [ ] Transient detection fires on audio peaks
-- [ ] Smoothed values update every frame
-- [ ] Store updates propagate to subscribers
+- [x] `getDisplayMedia({ audio: true })` or `getUserMedia({ audio: true })` connects
+- [x] AnalyserNode receives data (check `getByteFrequencyData` returns non-zero)
+- [x] FFT bands extracted correctly (bass 20-250Hz, mid 250-4kHz, high 4k+)
+- [x] Transient detection fires on audio peaks
+- [x] Smoothed values update every frame
+- [x] Store updates propagate to subscribers
 
 **Debug logging:**
 ```typescript

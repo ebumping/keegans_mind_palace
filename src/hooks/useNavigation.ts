@@ -153,10 +153,11 @@ export function useNavigation(options: UseNavigationOptions = {}): UseNavigation
     camera.position.copy(transform.position);
 
     // Apply rotation - use YXZ order to prevent gimbal lock
+    // Now includes roll for transient stumbles
     camera.rotation.order = 'YXZ';
     camera.rotation.y = transform.yaw;
     camera.rotation.x = transform.pitch;
-    camera.rotation.z = 0;
+    camera.rotation.z = transform.roll; // Camera roll for stumbles and wrongness
 
     // Apply FOV offset for audio reactivity
     if (camera instanceof THREE.PerspectiveCamera && enableAudioSway) {
@@ -260,7 +261,7 @@ export function useNavigationCamera(
     camera.rotation.order = 'YXZ';
     camera.rotation.y = transform.yaw;
     camera.rotation.x = transform.pitch;
-    camera.rotation.z = 0;
+    camera.rotation.z = transform.roll; // Camera roll for stumbles
 
     // Apply FOV offset
     if (camera instanceof THREE.PerspectiveCamera && enableAudioSway) {

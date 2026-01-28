@@ -146,15 +146,12 @@ export function useTransition(options: UseTransitionOptions = {}): UseTransition
     if (!system) return null;
 
     const params = system.getTransitionParams(
-      transition.trigger.doorway,
       transition.progress,
-      transition.effect.type,
-      transition.trigger.entryWall
+      transition.effect.type
     );
 
     const color = system.getTransitionColor(
-      transition.progress,
-      audioLevels
+      transition.progress
     );
 
     return {
@@ -193,9 +190,17 @@ export interface UseTransitionEffectReturn {
  * Hook for rendering transition effects in React Three Fiber.
  * Returns visual parameters for post-processing or custom effects.
  */
+interface TransitionParams {
+  fov: number;
+  opacity: number;
+  warpStrength: number;
+  zoom: number;
+  color: THREE.Color;
+}
+
 export function useTransitionEffect(): UseTransitionEffectReturn {
   const transition = useTransition();
-  const paramsRef = useRef<ReturnType<typeof getTransitionSystem()['getTransitionParams']>>(null);
+  const paramsRef = useRef<TransitionParams | null>(null);
 
   // Update params each frame
   useFrame(() => {

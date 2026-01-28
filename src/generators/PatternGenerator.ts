@@ -579,7 +579,7 @@ export class PatternGenerator {
       distorted.v,
       pattern,
       time,
-      seed
+      _seed
     );
 
     // Apply audio modulation

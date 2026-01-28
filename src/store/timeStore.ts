@@ -276,3 +276,12 @@ export const useTimeTracking = () =>
     deploymentTimestamp: state.deploymentTimestamp,
     hoursSinceDeployment: state.hoursSinceDeployment,
   }));
+
+/**
+ * Select elapsed hours for debug display.
+ */
+export const useElapsedHours = () =>
+  useTimeStore((state) => state.hoursSinceDeployment);
+
+// Also export alias for compatibility
+export { useElapsedHours as elapsedHours };

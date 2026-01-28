@@ -4,13 +4,24 @@
  * First-person navigation for Keegan's Mind Palace with:
  * - WASD/arrow key movement with smooth acceleration
  * - Mouse look controls via pointer lock
- * - Collision detection with room boundaries
+ * - Capsule collision detection (upgraded from AABB)
+ * - Step climbing for stairs and obstacles
  * - Doorway detection and room transition triggers
  * - Audio-reactive camera sway for disorientation effect
+ * - Audio-movement binding (bass = weight, transients = stumble)
+ * - Camera drift for subtle unease
+ *
+ * Per surreal-game-design skill: Movement should feel almost right,
+ * with subtle wrongness that unsettles without breaking immersion.
  */
 
 import * as THREE from 'three';
 import type { RoomConfig, DoorwayPlacement, Wall, RoomDimensions } from '../types/room';
+import {
+  getCollisionManager,
+  type CapsuleCollider,
+  DEFAULT_CAPSULE,
+} from './CollisionManager';
 
 // ============================================
 // Types and Interfaces
@@ -21,6 +32,7 @@ export interface MovementConfig {
   walkSpeed: number;
   sprintSpeed: number;
   strafeSpeed: number;
+  backwardSpeedMultiplier: number; // Asymmetric traversal - backward feels slower
 
   // Acceleration
   acceleration: number;
@@ -33,6 +45,16 @@ export interface MovementConfig {
   // Physics
   playerHeight: number; // Eye level
   playerRadius: number; // Collision capsule radius
+  capsuleHeight: number; // Full capsule height
+
+  // Audio influence (surreal movement)
+  audioInfluence: number; // How much audio affects movement (0-0.3)
+  transientStumbleIntensity: number; // Camera jolt on audio transients
+  transientCooldown: number; // Seconds between transient responses
+
+  // Camera drift (subtle autonomous movement)
+  driftIntensity: number; // Base drift amount (0-0.002)
+  driftGrowlMultiplier: number; // How much Growl increases drift
 }
 
 export interface MovementState {
@@ -85,6 +107,10 @@ export interface CameraEffects {
   swayOffset: THREE.Vector2;
   // FOV pulse on bass
   fovOffset: number;
+  // Camera roll (for transient stumbles)
+  rollOffset: number;
+  // Autonomous drift (subtle wrongness)
+  driftOffset: THREE.Vector2;
 }
 
 export interface AudioLevelsInput {
@@ -92,6 +118,16 @@ export interface AudioLevelsInput {
   mid: number;
   high: number;
   transient: boolean;
+  transientIntensity?: number; // 0-1 for more nuanced response
+}
+
+export interface MovementModifiers {
+  // Current transient cooldown timer
+  transientCooldownTimer: number;
+  // Recovery from transient stumble
+  stumbleRecovery: number;
+  // Growl intensity for drift scaling
+  growlIntensity: number;
 }
 
 // ============================================
@@ -102,12 +138,23 @@ export const DEFAULT_MOVEMENT_CONFIG: MovementConfig = {
   walkSpeed: 3.0,
   sprintSpeed: 4.5,
   strafeSpeed: 2.5,
+  backwardSpeedMultiplier: 0.85, // Backward movement 15% slower (asymmetric traversal)
   acceleration: 15.0,
   deceleration: 10.0,
   lookSensitivity: 0.002,
   maxPitch: 85,
   playerHeight: 1.7,
   playerRadius: 0.3,
+  capsuleHeight: 1.8,
+
+  // Audio influence defaults
+  audioInfluence: 0.15, // 15% movement weight from bass
+  transientStumbleIntensity: 0.02, // Camera roll jolt
+  transientCooldown: 0.3, // 300ms between stumbles
+
+  // Camera drift defaults
+  driftIntensity: 0.001, // Very subtle autonomous movement
+  driftGrowlMultiplier: 2.0, // Doubles at max Growl
 };
 
 // ============================================
@@ -143,6 +190,16 @@ export function createCameraEffects(): CameraEffects {
   return {
     swayOffset: new THREE.Vector2(),
     fovOffset: 0,
+    rollOffset: 0,
+    driftOffset: new THREE.Vector2(),
+  };
+}
+
+export function createMovementModifiers(): MovementModifiers {
+  return {
+    transientCooldownTimer: 0,
+    stumbleRecovery: 0,
+    growlIntensity: 0,
   };
 }
 
@@ -189,19 +246,44 @@ const _right = new THREE.Vector3();
 const _targetVelocity = new THREE.Vector3();
 const _movement = new THREE.Vector3();
 const _newPosition = new THREE.Vector3();
+const _capsule: CapsuleCollider = { ...DEFAULT_CAPSULE };
 
 /**
  * Update movement state based on input and apply physics
+ * Now uses capsule collision instead of AABB
+ * Includes audio-movement binding per surreal-game-design skill
  */
 export function updateMovement(
   state: MovementState,
   config: MovementConfig,
   delta: number,
-  roomConfig: RoomConfig | null
+  roomConfig: RoomConfig | null,
+  audioLevels?: AudioLevelsInput,
+  modifiers?: MovementModifiers
 ): CollisionResult {
-  // Calculate target velocity from input
-  const speed = state.sprinting ? config.sprintSpeed : config.walkSpeed;
-  const strafeSpeed = config.strafeSpeed;
+  const collisionManager = getCollisionManager();
+
+  // Update capsule dimensions from config
+  _capsule.radius = config.playerRadius;
+  _capsule.height = config.capsuleHeight;
+  _capsule.offset.set(0, config.capsuleHeight * 0.5, 0);
+
+  // Calculate base speed with asymmetric traversal
+  let speed = state.sprinting ? config.sprintSpeed : config.walkSpeed;
+
+  // Backward movement is slower (asymmetric traversal - "the path back feels longer")
+  if (state.forward < 0) {
+    speed *= config.backwardSpeedMultiplier;
+  }
+
+  let strafeSpeed = config.strafeSpeed;
+
+  // Audio-movement binding: bass adds weight
+  if (audioLevels && config.audioInfluence > 0) {
+    const bassWeight = 1 + audioLevels.bass * config.audioInfluence;
+    speed /= bassWeight;
+    strafeSpeed /= bassWeight;
+  }
 
   // Calculate direction vectors based on yaw (horizontal rotation only)
   _forward.set(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), state.yaw);
@@ -212,6 +294,21 @@ export function updateMovement(
     .set(0, 0, 0)
     .addScaledVector(_forward, state.forward * speed)
     .addScaledVector(_right, state.strafe * strafeSpeed);
+
+  // Audio-movement binding: transient causes micro-stumble
+  if (audioLevels && modifiers && audioLevels.transient) {
+    if (modifiers.transientCooldownTimer <= 0) {
+      // Reduce velocity on transient
+      state.velocity.multiplyScalar(0.85);
+      modifiers.transientCooldownTimer = config.transientCooldown;
+      modifiers.stumbleRecovery = 1.0;
+    }
+  }
+
+  // Update cooldown timer
+  if (modifiers && modifiers.transientCooldownTimer > 0) {
+    modifiers.transientCooldownTimer -= delta;
+  }
 
   // Apply acceleration/deceleration with exponential smoothing
   const accel = _targetVelocity.lengthSq() > 0.01 ? config.acceleration : config.deceleration;
@@ -224,7 +321,7 @@ export function updateMovement(
   // Calculate new position
   _newPosition.copy(state.position).add(_movement);
 
-  // Check collision
+  // Check collision using capsule
   let collisionResult: CollisionResult = {
     collided: false,
     normal: new THREE.Vector3(),
@@ -234,26 +331,70 @@ export function updateMovement(
   };
 
   if (roomConfig) {
-    collisionResult = checkCollision(_newPosition, config.playerRadius, roomConfig);
+    // Use new capsule collision system
+    const fullResult = collisionManager.testMovement(state.position, _newPosition, _capsule);
 
-    if (collisionResult.collided && !collisionResult.inDoorway) {
-      // Slide along wall
-      const slideMovement = _movement
-        .clone()
-        .projectOnPlane(collisionResult.normal)
-        .multiplyScalar(0.8); // Friction
+    collisionResult.collided = fullResult.collided;
+    collisionResult.normal = fullResult.normal;
+    collisionResult.penetration = fullResult.penetration;
+    collisionResult.inDoorway = fullResult.inDoorway;
+    collisionResult.doorway = fullResult.doorway;
 
-      state.position.add(slideMovement);
+    if (fullResult.collided && !fullResult.inDoorway) {
+      // Try step climbing first
+      const stepResult = collisionManager.attemptStep(state.position, _movement, _capsule);
 
-      // Reduce velocity in collision direction
-      state.velocity.projectOnPlane(collisionResult.normal);
+      if (stepResult.success) {
+        state.position.copy(stepResult.newPosition);
+      } else {
+        // Slide along surface
+        const slideMovement = collisionManager.slideAlongSurface(
+          state.position,
+          _movement,
+          fullResult.normal,
+          _capsule
+        );
+        state.position.add(slideMovement);
+
+        // Reduce velocity in collision direction
+        const dot = state.velocity.dot(fullResult.normal);
+        if (dot < 0) {
+          state.velocity.sub(fullResult.normal.clone().multiplyScalar(dot));
+        }
+      }
     } else {
       // No collision - apply full movement
       state.position.copy(_newPosition);
     }
+
+    // Apply breathing wall push
+    if (fullResult.pushVector.lengthSq() > 0) {
+      state.position.add(fullResult.pushVector);
+      // Also affect velocity slightly for physical feel
+      state.velocity.add(fullResult.pushVector.clone().multiplyScalar(0.5));
+    }
+
+    // Safety clamp: ensure player stays within room bounds
+    // This is a fallback in case raycasting misses
+    const halfWidth = roomConfig.dimensions.width / 2 - config.playerRadius;
+    const halfDepth = roomConfig.dimensions.depth / 2 - config.playerRadius;
+    state.position.x = THREE.MathUtils.clamp(state.position.x, -halfWidth, halfWidth);
+    state.position.z = THREE.MathUtils.clamp(state.position.z, -halfDepth, halfDepth);
   } else {
-    // No room config - allow free movement
-    state.position.copy(_newPosition);
+    // No room config - allow free movement (fallback to legacy)
+    collisionResult = checkCollision(_newPosition, config.playerRadius, roomConfig!);
+
+    if (collisionResult.collided && !collisionResult.inDoorway) {
+      const slideMovement = _movement
+        .clone()
+        .projectOnPlane(collisionResult.normal)
+        .multiplyScalar(0.8);
+
+      state.position.add(slideMovement);
+      state.velocity.projectOnPlane(collisionResult.normal);
+    } else {
+      state.position.copy(_newPosition);
+    }
   }
 
   // Update moving status
@@ -516,12 +657,15 @@ export function calculateEntryYaw(entryWall: Wall): number {
 /**
  * Update camera effects based on audio levels
  * Creates subtle disorientation when music is playing
+ * Includes camera drift for autonomous wrongness
  */
 export function updateCameraEffects(
   effects: CameraEffects,
   audioLevels: AudioLevelsInput,
   time: number,
-  delta: number
+  delta: number,
+  config?: MovementConfig,
+  modifiers?: MovementModifiers
 ): void {
   // Audio-driven sway - subtle oscillation based on frequencies
   const targetSwayX = Math.sin(time * 0.5) * audioLevels.mid * 0.003;
@@ -534,19 +678,48 @@ export function updateCameraEffects(
   // FOV pulse on bass hits
   const targetFovOffset = audioLevels.transient ? 5 : audioLevels.bass * 2;
   effects.fovOffset = THREE.MathUtils.lerp(effects.fovOffset, targetFovOffset, delta * 10);
+
+  // Transient stumble - camera roll jolt
+  if (modifiers && modifiers.stumbleRecovery > 0) {
+    const stumbleIntensity = config?.transientStumbleIntensity || 0.02;
+    const targetRoll = (Math.random() - 0.5) * stumbleIntensity * modifiers.stumbleRecovery;
+    effects.rollOffset = THREE.MathUtils.lerp(effects.rollOffset, targetRoll, delta * 8);
+    modifiers.stumbleRecovery -= delta * 3; // Recover over ~0.33 seconds
+  } else {
+    // Slowly return roll to zero
+    effects.rollOffset = THREE.MathUtils.lerp(effects.rollOffset, 0, delta * 5);
+  }
+
+  // Camera drift - subtle autonomous movement
+  // Increases with Growl intensity per surreal-game-design skill
+  if (config) {
+    const growlLevel = modifiers?.growlIntensity || 0;
+    const driftIntensity = config.driftIntensity * (1 + growlLevel * config.driftGrowlMultiplier);
+
+    // Slow, somewhat unpredictable drift using multiple frequencies
+    const targetDriftX = Math.sin(time * 0.3) * driftIntensity +
+                         Math.sin(time * 0.17) * driftIntensity * 0.5;
+    const targetDriftY = Math.cos(time * 0.2) * driftIntensity * 0.5 +
+                         Math.cos(time * 0.13) * driftIntensity * 0.3;
+
+    effects.driftOffset.x = THREE.MathUtils.lerp(effects.driftOffset.x, targetDriftX, delta * 2);
+    effects.driftOffset.y = THREE.MathUtils.lerp(effects.driftOffset.y, targetDriftY, delta * 2);
+  }
 }
 
 /**
  * Apply camera effects to rotation
+ * Now includes roll and drift for subtle wrongness
  */
 export function applyCameraEffects(
   baseYaw: number,
   basePitch: number,
   effects: CameraEffects
-): { yaw: number; pitch: number } {
+): { yaw: number; pitch: number; roll: number } {
   return {
-    yaw: baseYaw + effects.swayOffset.x,
-    pitch: basePitch + effects.swayOffset.y,
+    yaw: baseYaw + effects.swayOffset.x + effects.driftOffset.x,
+    pitch: basePitch + effects.swayOffset.y + effects.driftOffset.y,
+    roll: effects.rollOffset,
   };
 }
 
@@ -683,7 +856,9 @@ export class PointerLockManager {
   }
 
   private handleLockChange(): void {
-    this.isLocked = document.pointerLockElement === this.element;
+    // Check if any element has pointer lock (not just our specific element)
+    // This avoids reference comparison issues when lock is requested from different sources
+    this.isLocked = document.pointerLockElement !== null;
     this.onLockChange?.(this.isLocked);
   }
 
@@ -743,6 +918,7 @@ export class NavigationSystem {
   private inputManager: KeyboardInputManager;
   private pointerLock: PointerLockManager;
   private cameraEffects: CameraEffects;
+  private movementModifiers: MovementModifiers;
   private roomConfig: RoomConfig | null = null;
   private onTransition: ((trigger: TransitionTrigger) => void) | null = null;
 
@@ -752,6 +928,7 @@ export class NavigationSystem {
     this.inputManager = new KeyboardInputManager();
     this.pointerLock = new PointerLockManager();
     this.cameraEffects = createCameraEffects();
+    this.movementModifiers = createMovementModifiers();
 
     this.pointerLock.setInputManager(this.inputManager);
   }
@@ -769,6 +946,15 @@ export class NavigationSystem {
 
   setRoomConfig(config: RoomConfig | null): void {
     this.roomConfig = config;
+    // Update collision manager with new room
+    if (config) {
+      const collisionManager = getCollisionManager();
+      collisionManager.setRoom(config);
+    }
+  }
+
+  setGrowlIntensity(intensity: number): void {
+    this.movementModifiers.growlIntensity = intensity;
   }
 
   setOnTransition(callback: (trigger: TransitionTrigger) => void): void {
@@ -812,17 +998,26 @@ export class NavigationSystem {
     // Reset mouse delta after processing
     this.inputManager.resetMouseDelta();
 
-    // Update movement
+    // Update movement with audio-movement binding
     const collisionResult = updateMovement(
       this.movementState,
       this.config,
       delta,
-      this.roomConfig
+      this.roomConfig,
+      audioLevels,
+      this.movementModifiers
     );
 
-    // Update camera effects
+    // Update camera effects with drift and stumble
     if (audioLevels && time !== undefined) {
-      updateCameraEffects(this.cameraEffects, audioLevels, time, delta);
+      updateCameraEffects(
+        this.cameraEffects,
+        audioLevels,
+        time,
+        delta,
+        this.config,
+        this.movementModifiers
+      );
     }
 
     // Check for transition triggers
@@ -838,9 +1033,10 @@ export class NavigationSystem {
     position: THREE.Vector3;
     yaw: number;
     pitch: number;
+    roll: number;
     fovOffset: number;
   } {
-    const { yaw, pitch } = applyCameraEffects(
+    const { yaw, pitch, roll } = applyCameraEffects(
       this.movementState.yaw,
       this.movementState.pitch,
       this.cameraEffects
@@ -853,6 +1049,7 @@ export class NavigationSystem {
       position,
       yaw,
       pitch,
+      roll,
       fovOffset: this.cameraEffects.fovOffset,
     };
   }

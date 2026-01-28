@@ -13,7 +13,6 @@ import * as THREE from 'three';
 import type { DoorwayPlacement, Wall, RoomConfig } from '../types/room';
 import { RoomGenerator } from '../generators/RoomGenerator';
 import { useAudioStore } from '../store/audioStore';
-import { useTimeStore } from '../store/timeStore';
 
 // ============================================
 // Types and Interfaces
@@ -420,9 +419,6 @@ export class TransitionSystem {
       transient: audioState.transient,
     };
 
-    // Get Growl intensity for atmosphere
-    const growlIntensity = useTimeStore.getState().growlIntensity;
-
     // Generate target room
     const toRoom = this.generateRoom(toRoomIndex, trigger.entryWall);
 
@@ -517,17 +513,15 @@ export class TransitionSystem {
    * Exposed for React hooks to use.
    */
   getTransitionParams(
-    doorway: DoorwayPlacement,
     progress: number,
-    effectType: TransitionType,
-    entryWall: Wall
+    effectType: TransitionType
   ): {
     fov: number;
     opacity: number;
     warpStrength: number;
     zoom: number;
   } {
-    return this.calculateTransitionParams(doorway, progress, effectType, entryWall);
+    return this.calculateTransitionParams(progress, effectType);
   }
 
   /**
@@ -535,10 +529,9 @@ export class TransitionSystem {
    * Exposed for React hooks to use.
    */
   getTransitionColor(
-    progress: number,
-    audioLevels?: { bass: number; mid: number; high: number }
+    progress: number
   ): THREE.Color {
-    return this.calculateTransitionColor(progress, audioLevels);
+    return this.calculateTransitionColor(progress);
   }
 
   // ============================================
@@ -555,7 +548,8 @@ export class TransitionSystem {
     setTimeout(() => {
       if (this.currentTransition && this.transitionCallback) {
         this.transitionCallback(
-          this.currentTransition.toRoom
+          this.currentTransition.toRoom,
+          this.currentTransition.trigger.entryWall
         );
       }
     }, (this.currentTransition.effect.duration * 1000) / 2);

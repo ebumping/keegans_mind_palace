@@ -557,7 +557,7 @@ export function carpetBorderPattern(
   u: number,
   v: number,
   borderWidth: number,
-  seed: number
+  _seed: number
 ): number {
   // Distance from edge (0 at edge, 1 at center)
   const edgeDistU = Math.min(u, 1 - u) * 2;
