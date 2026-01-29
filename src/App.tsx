@@ -233,13 +233,13 @@ function PointerLockOverlay({ isTouchDevice, onEnter }: { isTouchDevice: boolean
           <>
             Left Joystick - Move<br />
             Right Zone - Look Around<br />
-            Center Button - Sprint
+            Center Button - Jump
           </>
         ) : (
           <>
             WASD / Arrow Keys - Move<br />
             Mouse - Look Around<br />
-            Shift - Sprint<br />
+            Space - Jump<br />
             ESC - Release Cursor
           </>
         )}

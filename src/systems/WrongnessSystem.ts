@@ -50,17 +50,18 @@ export function calculateWrongnessLevel(
   growlIntensity: number
 ): WrongnessLevel {
   // Combined factor from both depth and Growl
-  const depthFactor = Math.min(depth / 30, 1);
+  // Rooms escalate faster now — wrongness starts showing from room 3+
+  const depthFactor = Math.min(depth / 15, 1);
   const growlFactor = growlIntensity;
 
   // Higher of the two determines base level, other adds bonus
   const combinedFactor = Math.max(depthFactor, growlFactor) +
     Math.min(depthFactor, growlFactor) * 0.5;
 
-  if (combinedFactor >= 0.9) return WrongnessLevel.BIZARRE;
-  if (combinedFactor >= 0.7) return WrongnessLevel.SURREAL;
-  if (combinedFactor >= 0.45) return WrongnessLevel.UNSETTLING;
-  if (combinedFactor >= 0.2) return WrongnessLevel.NOTICEABLE;
+  if (combinedFactor >= 0.8) return WrongnessLevel.BIZARRE;
+  if (combinedFactor >= 0.55) return WrongnessLevel.SURREAL;
+  if (combinedFactor >= 0.3) return WrongnessLevel.UNSETTLING;
+  if (combinedFactor >= 0.12) return WrongnessLevel.NOTICEABLE;
   return WrongnessLevel.SUBTLE;
 }
 
@@ -71,25 +72,25 @@ export function getWrongnessParameters(
   level: WrongnessLevel,
   _seed: number
 ): WrongnessParameters {
-  // Base parameters that scale with level
+  // Base parameters that scale with level — tuned for earlier impact
   const levelFactor = (level - 1) / 4; // 0 to 1
 
   return {
-    proportionSkew: 0.02 + levelFactor * 0.13,
-    wallAngleVariance: (0.5 + levelFactor * 4.5) * (Math.PI / 180),
-    ceilingVariance: 0.02 + levelFactor * 0.28,
+    proportionSkew: 0.03 + levelFactor * 0.15,
+    wallAngleVariance: (1.0 + levelFactor * 5.0) * (Math.PI / 180),
+    ceilingVariance: 0.03 + levelFactor * 0.30,
 
-    furnitureOffset: levelFactor * 0.5,
-    furnitureRotation: levelFactor * 180,
-    objectMultiplicity: levelFactor * 0.6 + (level >= WrongnessLevel.SURREAL ? 0.3 : 0),
+    furnitureOffset: 0.05 + levelFactor * 0.5,
+    furnitureRotation: 5 + levelFactor * 180,
+    objectMultiplicity: levelFactor * 0.7 + (level >= WrongnessLevel.SURREAL ? 0.3 : 0),
 
-    doorSizeVariance: levelFactor * 0.3,
-    fakeDoorChance: levelFactor * 0.4,
+    doorSizeVariance: 0.05 + levelFactor * 0.3,
+    fakeDoorChance: 0.1 + levelFactor * 0.4,
 
-    flickerChance: levelFactor * 0.3,
-    sourcelessChance: levelFactor * 0.2,
+    flickerChance: 0.1 + levelFactor * 0.3,
+    sourcelessChance: 0.05 + levelFactor * 0.25,
 
-    clockWrongness: levelFactor,
+    clockWrongness: 0.1 + levelFactor * 0.9,
   };
 }
 
