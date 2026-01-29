@@ -370,33 +370,7 @@ export class CollisionManager {
       'z'
     );
 
-        // Create a thin oriented box along this edge
-        // The box extends wallThickness outward from the edge
-        const halfLen = edgeLen / 2 + wallThickness; // Extend past corners to seal gaps
-        const halfThick = wallThickness / 2;
-
-        // Box center: midpoint of edge, offset outward by half thickness
-        const boxCenterX = midX + nx * halfThick;
-        const boxCenterZ = midZ + nz * halfThick;
-
-        // Create an AABB that bounds the rotated wall collider
-        // For simplicity and robustness, use an oriented AABB that covers the wall segment
-        const angle = Math.atan2(edgeDy, edgeDx);
-        const cosA = Math.abs(Math.cos(angle));
-        const sinA = Math.abs(Math.sin(angle));
-
-        // AABB half-extents for the rotated box
-        const hx = halfLen * cosA + halfThick * sinA;
-        const hz = halfLen * sinA + halfThick * cosA;
-
-        this.addStaticCollider(`wall_poly_${i}`, new THREE.Box3(
-          new THREE.Vector3(boxCenterX - hx, 0, boxCenterZ - hz),
-          new THREE.Vector3(boxCenterX + hx, height, boxCenterZ + hz)
-        ));
-      }
-    }
-
-    // Floor (using bounding box for floor/ceiling is fine — polygon containment handles XZ)
+    // Floor
     this.addStaticCollider('floor', new THREE.Box3(
       new THREE.Vector3(-width / 2, -wallThickness, -depth / 2),
       new THREE.Vector3(width / 2, 0, depth / 2)

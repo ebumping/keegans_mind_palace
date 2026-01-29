@@ -63,9 +63,6 @@ function SingleDoorwayShimmer({
   const shimmerIntensity = getShimmerIntensity(level);
   const shimmerColor = useMemo(() => getShimmerColor(level), [level]);
 
-  // Don't render if no variation
-  if (shimmerIntensity === 0) return null;
-
   // Calculate doorway position in world space
   const position = useMemo(() => {
     const { width, depth } = roomDimensions;
@@ -167,6 +164,9 @@ function SingleDoorwayShimmer({
       material.uniforms.u_audio.value = audioLevels.bass * 0.5 + audioLevels.transientIntensity * 0.3;
     }
   });
+
+  // Don't render if no variation
+  if (shimmerIntensity === 0) return null;
 
   return (
     <mesh
