@@ -23,11 +23,6 @@ import type {
   CuratedRoom,
   WallSegment,
   Point2D,
-  LightSource,
-  RoomPalette,
-  AtmospherePreset,
-  FurniturePlacement,
-  CuratedDoorway,
 } from '../types/room';
 
 // ============================================

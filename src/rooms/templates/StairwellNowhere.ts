@@ -26,7 +26,7 @@ import {
   type LiminalMaterialConfig,
   type AudioData,
 } from '../../systems/AudioReactiveSystem';
-import type { CuratedRoom } from '../../types/room';
+// Room type from ../../types/room used at runtime via AudioReactiveSystem
 
 // =============================================================================
 // Palette — cold industrial concrete stairwell
@@ -59,7 +59,7 @@ const HALF_D = DEPTH / 2;
 
 // Stair geometry constants
 const LANDING_HEIGHT = 4;       // Height per flight
-const NUM_FLIGHTS = 3;          // 3 flights that loop back
+// const NUM_FLIGHTS = 3;       // 3 flights that loop back
 const STAIR_WIDTH = 1.2;        // Width of each stair run
 const STAIR_DEPTH = 0.28;       // Depth of each step tread
 const STAIR_RISE = 0.2;         // Height of each step riser

@@ -7,7 +7,6 @@
  * at wrong heights. The unsettling feeling of a door that shouldn't exist.
  */
 
-import { useMemo } from 'react';
 import * as THREE from 'three';
 import { SeededRandom } from '../utils/seededRandom';
 import type { DoorwayPlacement, RoomDimensions } from '../types/room';
@@ -35,7 +34,7 @@ function getDoorwayTransform(
   placement: DoorwayPlacement,
   dimensions: RoomDimensions
 ): { position: THREE.Vector3; rotation: THREE.Euler } {
-  const { width, height, depth } = dimensions;
+  const { width, depth } = dimensions;
 
   switch (placement.wall) {
     case Wall.NORTH:

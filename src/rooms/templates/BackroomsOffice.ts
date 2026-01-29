@@ -528,7 +528,6 @@ function buildFurniture(
       }
 
       // Chair — slightly pushed back from desk, with minor rotation for naturalness
-      const chairY = 0;
       const chairAngle = (col * 0.15) - 0.1; // Slight varied rotation
 
       const seat = new THREE.Mesh(chairSeatGeo, chairFabricMat);
@@ -827,7 +826,7 @@ export function buildBackroomsOffice(seed: number = 126): BackroomsOfficeRoom {
   buildCubicles(group, geometries, materials, seed);
   buildFurniture(group, geometries, materials);
   const { dripParticles } = buildWaterCooler(group, geometries, materials);
-  const { lights, lightMeshes, flickerTubeMat } = buildLights(group, geometries, materials);
+  const { lights, flickerTubeMat } = buildLights(group, geometries, materials);
   buildExitGlows(group, geometries, materials);
 
   // Track elapsed time for shader updates
