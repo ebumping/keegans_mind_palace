@@ -470,6 +470,21 @@ export class RoomGenerator {
     geometries.push(floorGeom);
     materials.push(floorMat);
 
+    // Dark floor fallback — ensures no black void is ever visible beneath the player.
+    // Placed slightly below the main floor so it's only visible through transparent/void floors.
+    const fallbackFloorGeom = new THREE.PlaneGeometry(
+      config.dimensions.width * 1.5,
+      config.dimensions.depth * 1.5
+    );
+    const fallbackFloorMat = new THREE.MeshBasicMaterial({ color: 0x1a1a2e });
+    const fallbackFloor = new THREE.Mesh(fallbackFloorGeom, fallbackFloorMat);
+    fallbackFloor.rotation.x = -Math.PI / 2;
+    fallbackFloor.position.y = -0.05; // Just below the main floor
+    fallbackFloor.receiveShadow = true;
+    group.add(fallbackFloor);
+    geometries.push(fallbackFloorGeom);
+    materials.push(fallbackFloorMat);
+
     if (config.ceilingConfig.isVisible) {
       const { ceilingMesh, ceilingGeom, ceilingMat } = this.createCeiling(config);
       group.add(ceilingMesh);

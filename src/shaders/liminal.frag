@@ -161,12 +161,18 @@ void main() {
   pattern += grainPattern(scaledUV, 20.0) * u_highSmooth * 0.2;
 
   // === Audio Modulation ===
-  // Bass affects overall pattern intensity
-  pattern *= 0.6 + u_bassSmooth * 0.4;
+  // Bass affects overall pattern intensity — blend raw (punchy) and smooth (flowing)
+  float bassBlend = mix(u_bassSmooth, u_bass, 0.35);
+  pattern *= 0.6 + bassBlend * 0.4;
 
-  // High frequencies add fine detail/sparkle
+  // Mid frequencies add a pulsing brightness layer via raw value for sharper feel
+  float midPulse = u_mid * 0.12;
+  pattern += midPulse * (sin(scaledUV.y * 8.0 + u_time * 1.5) * 0.5 + 0.5);
+
+  // High frequencies add fine detail/sparkle — raw high for crisp transient sparkle
   float highDetail = hash(scaledUV * 100.0 + u_time * 0.1);
   pattern += highDetail * u_highSmooth * 0.15;
+  pattern += highDetail * u_high * 0.08;
 
   // === Transient Glitch Effects ===
   // Color inversion flash on strong transients

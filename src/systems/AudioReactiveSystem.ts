@@ -156,7 +156,15 @@ export interface AudioData {
 }
 
 /**
- * Updates a liminal material's uniforms with current audio data
+ * Ambient pulse threshold — when combined audio level is below this,
+ * inject a slow sine-wave pulse so rooms always have subtle visual movement.
+ */
+const SILENCE_THRESHOLD = 0.02;
+
+/**
+ * Updates a liminal material's uniforms with current audio data.
+ * When no audio signal is detected, injects a slow ambient sine-wave pulse
+ * on the bass uniform so rooms are never visually static.
  */
 export function updateLiminalMaterial(
   material: THREE.ShaderMaterial,
@@ -171,16 +179,36 @@ export function updateLiminalMaterial(
   uniforms.u_time.value = time;
   uniforms.u_deltaTime.value = deltaTime;
 
-  // Audio (raw)
-  uniforms.u_bass.value = audioData.bass;
-  uniforms.u_mid.value = audioData.mid;
-  uniforms.u_high.value = audioData.high;
-  uniforms.u_transient.value = audioData.transient;
+  // Detect silence — if all levels are near zero, add ambient pulse
+  const combinedLevel = audioData.bass + audioData.mid + audioData.high;
+  const isSilent = combinedLevel < SILENCE_THRESHOLD;
 
-  // Audio (smoothed)
-  uniforms.u_bassSmooth.value = audioData.bassSmooth;
-  uniforms.u_midSmooth.value = audioData.midSmooth;
-  uniforms.u_highSmooth.value = audioData.highSmooth;
+  if (isSilent) {
+    // Slow ambient sine-wave pulse so rooms always breathe
+    const ambientBass = (Math.sin(time * 0.4) * 0.5 + 0.5) * 0.18;
+    const ambientMid  = (Math.sin(time * 0.6 + 1.0) * 0.5 + 0.5) * 0.08;
+    const ambientHigh = (Math.sin(time * 1.2 + 2.0) * 0.5 + 0.5) * 0.04;
+
+    uniforms.u_bass.value = ambientBass;
+    uniforms.u_mid.value = ambientMid;
+    uniforms.u_high.value = ambientHigh;
+    uniforms.u_transient.value = 0;
+
+    uniforms.u_bassSmooth.value = ambientBass;
+    uniforms.u_midSmooth.value = ambientMid;
+    uniforms.u_highSmooth.value = ambientHigh;
+  } else {
+    // Audio (raw)
+    uniforms.u_bass.value = audioData.bass;
+    uniforms.u_mid.value = audioData.mid;
+    uniforms.u_high.value = audioData.high;
+    uniforms.u_transient.value = audioData.transient;
+
+    // Audio (smoothed)
+    uniforms.u_bassSmooth.value = audioData.bassSmooth;
+    uniforms.u_midSmooth.value = audioData.midSmooth;
+    uniforms.u_highSmooth.value = audioData.highSmooth;
+  }
 
   // Growl
   uniforms.u_growlIntensity.value = growlIntensity;

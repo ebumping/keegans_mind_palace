@@ -340,7 +340,10 @@ export function updateMovement(
     collisionResult.inDoorway = fullResult.inDoorway;
     collisionResult.doorway = fullResult.doorway;
 
-    if (fullResult.collided && !fullResult.inDoorway) {
+    if (fullResult.collided) {
+      // Always respond to collisions — even near doorways.
+      // The doorway opening itself has no wall collider, so legitimate
+      // passage through a doorway will not trigger collision.
       // Try step climbing first
       const stepResult = collisionManager.attemptStep(state.position, _movement, _capsule);
 
@@ -390,7 +393,8 @@ export function updateMovement(
     // No room config - allow free movement (fallback to legacy)
     collisionResult = checkCollision(_newPosition, config.playerRadius, roomConfig!);
 
-    if (collisionResult.collided && !collisionResult.inDoorway) {
+    if (collisionResult.collided) {
+      // Always enforce collisions — doorway openings have no wall collider
       const slideMovement = _movement
         .clone()
         .projectOnPlane(collisionResult.normal)
