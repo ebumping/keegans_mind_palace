@@ -27,7 +27,7 @@ import {
   type LiminalMaterialConfig,
   type AudioData,
 } from '../../systems/AudioReactiveSystem';
-import type { CuratedRoom } from '../../types/room';
+// Room type from ../../types/room used at runtime via AudioReactiveSystem
 
 // =============================================================================
 // Palette — warm hotel burgundy with amber lighting
@@ -76,14 +76,15 @@ const WAINSCOT_HEIGHT = HEIGHT / 3;     // ~1.17m — lower third of walls
 
 // L-shape floor polygon vertices (counter-clockwise)
 // This defines the walkable area as a closed polygon
-const L_VERTICES: { x: number; z: number }[] = [
-  { x: -HALF_LAW, z: -HALF_LAD },                     // 0: bottom-left of long arm
-  { x: HALF_LAW, z: -HALF_LAD },                      // 1: bottom-right of long arm
-  { x: HALF_LAW, z: HALF_LAD - SHORT_ARM_WIDTH },     // 2: inner corner of L
-  { x: SHORT_ARM_X_END, z: HALF_LAD - SHORT_ARM_WIDTH }, // 3: bottom-right of short arm
-  { x: SHORT_ARM_X_END, z: HALF_LAD },                // 4: top-right of short arm (exit end)
-  { x: -HALF_LAW, z: HALF_LAD },                      // 5: top-left of long arm
-];
+// Currently unused but kept as reference for floor polygon construction
+// const L_VERTICES: { x: number; z: number }[] = [
+//   { x: -HALF_LAW, z: -HALF_LAD },                     // 0: bottom-left of long arm
+//   { x: HALF_LAW, z: -HALF_LAD },                      // 1: bottom-right of long arm
+//   { x: HALF_LAW, z: HALF_LAD - SHORT_ARM_WIDTH },     // 2: inner corner of L
+//   { x: SHORT_ARM_X_END, z: HALF_LAD - SHORT_ARM_WIDTH }, // 3: bottom-right of short arm
+//   { x: SHORT_ARM_X_END, z: HALF_LAD },                // 4: top-right of short arm (exit end)
+//   { x: -HALF_LAW, z: HALF_LAD },                      // 5: top-left of long arm
+// ];
 
 // =============================================================================
 // Material helpers

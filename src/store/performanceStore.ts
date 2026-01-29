@@ -136,11 +136,7 @@ function detectPerformanceTier(): QualityTier {
     const debugInfo = (gl as WebGLRenderingContext).getExtension('WEBGL_debug_renderer_info');
     if (debugInfo) {
       const renderer = (gl as WebGLRenderingContext).getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
-      const vendor = (gl as WebGLRenderingContext).getParameter(debugInfo.UNMASKED_VENDOR_WEBGL);
-
       const rendererLower = renderer.toLowerCase();
-      const vendorLower = vendor.toLowerCase();
-
       // Detect software renderers — always low tier
       const isSoftwareRenderer =
         rendererLower.includes('llvmpipe') ||

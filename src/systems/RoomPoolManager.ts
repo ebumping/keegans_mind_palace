@@ -15,7 +15,6 @@ import * as THREE from 'three';
 import type { RoomConfig, GeneratedRoom } from '../types/room';
 import { RoomGenerator } from '../generators/RoomGenerator';
 import { getTransitionSystem } from './TransitionSystem';
-import { getWrongnessSystem } from './WrongnessSystem';
 import { getPortalVariationSystem } from './PortalVariationSystem';
 
 // How many rooms to keep on each side of the current room

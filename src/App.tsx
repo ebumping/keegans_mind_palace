@@ -17,7 +17,6 @@ import { getTransitionSystem } from './systems/TransitionSystem'
 import { CollisionDebug } from './debug/CollisionDebug'
 import { DebugOverlay } from './debug/DebugOverlay'
 import { getWrongnessSystem } from './systems/WrongnessSystem'
-import { getPortalVariationSystem } from './systems/PortalVariationSystem'
 import { getRoomPoolManager, disposeRoomPoolManager } from './systems/RoomPoolManager'
 import { usePerformanceStore, usePerformanceSettings, type PerformanceSettings } from './store/performanceStore'
 
