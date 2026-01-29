@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect, useCallback } from 'react'
-import { Canvas } from '@react-three/fiber'
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
+import { Canvas, useFrame } from '@react-three/fiber'
 import { EffectComposer, Bloom, ChromaticAberration, Vignette } from '@react-three/postprocessing'
 import { BlendFunction } from 'postprocessing'
 import * as THREE from 'three'
@@ -10,13 +10,16 @@ import { AudioPermission } from './components/UI/AudioPermission'
 import { Controls } from './components/UI/Controls'
 import { useTimeStore } from './store/timeStore'
 import { useNavigationInit, useNavigation } from './hooks/useNavigation'
+import { getNavigationSystem, calculateEntryPosition, calculateEntryYaw, getOppositeWall, DEFAULT_MOVEMENT_CONFIG } from './systems/NavigationSystem'
 import { useTransition } from './hooks/useTransition'
-import { RoomGenerator } from './generators/RoomGenerator'
-import type { RoomConfig } from './types/room'
+import type { RoomConfig, DoorwayPlacement } from './types/room'
 import { getTransitionSystem } from './systems/TransitionSystem'
 import { CollisionDebug } from './debug/CollisionDebug'
 import { DebugOverlay } from './debug/DebugOverlay'
 import { getWrongnessSystem } from './systems/WrongnessSystem'
+import { getPortalVariationSystem } from './systems/PortalVariationSystem'
+import { getRoomPoolManager, disposeRoomPoolManager } from './systems/RoomPoolManager'
+import { usePerformanceStore, usePerformanceSettings, type PerformanceSettings } from './store/performanceStore'
 
 // Pale-strata color palette
 const COLORS = {
@@ -26,6 +29,34 @@ const COLORS = {
   secondary: '#8eecf5',
 }
 
+
+/**
+ * FPS Monitor - Updates performance store for adaptive quality
+ */
+function FpsMonitor() {
+  const updateFps = usePerformanceStore((state) => state.updateFps)
+  const adaptQuality = usePerformanceStore((state) => state.adaptQuality)
+  const frameCount = useMemo(() => ({ current: 0, lastTime: performance.now() }), [])
+
+  useFrame(() => {
+    frameCount.current++
+    const now = performance.now()
+    const delta = now - frameCount.lastTime
+
+    // Calculate FPS every second
+    if (delta >= 1000) {
+      const fps = (frameCount.current / delta) * 1000
+      updateFps(fps)
+      frameCount.current = 0
+      frameCount.lastTime = now
+
+      // Check if we need to adapt quality (every 5 seconds worth of samples)
+      adaptQuality()
+    }
+  })
+
+  return null
+}
 
 /**
  * Growl-Reactive Chromatic Aberration
@@ -51,10 +82,63 @@ function GrowlReactiveChromaticAberration() {
 }
 
 /**
+ * Post-Processing Effects Component
+ * Renders different effect configurations based on performance tier.
+ * This avoids TypeScript issues with conditional children in EffectComposer.
+ */
+function PostProcessingEffects({ settings }: { settings: PerformanceSettings }) {
+  if (!settings.enablePostProcessing) {
+    return null
+  }
+
+  // High quality: all effects
+  if (settings.enableBloom && settings.enableChromaticAberration && settings.enableGlitch && settings.enableVignette) {
+    return (
+      <EffectComposer>
+        <Bloom intensity={0.5} luminanceThreshold={0.2} luminanceSmoothing={0.9} mipmapBlur />
+        <GrowlReactiveChromaticAberration />
+        <GlitchEffect />
+        <Vignette offset={0.3} darkness={0.7} blendFunction={BlendFunction.NORMAL} />
+      </EffectComposer>
+    )
+  }
+
+  // Medium quality: bloom + vignette only
+  if (settings.enableBloom && settings.enableVignette) {
+    return (
+      <EffectComposer>
+        <Bloom intensity={0.5} luminanceThreshold={0.2} luminanceSmoothing={0.9} mipmapBlur />
+        <Vignette offset={0.3} darkness={0.7} blendFunction={BlendFunction.NORMAL} />
+      </EffectComposer>
+    )
+  }
+
+  // Bloom only
+  if (settings.enableBloom) {
+    return (
+      <EffectComposer>
+        <Bloom intensity={0.5} luminanceThreshold={0.2} luminanceSmoothing={0.9} mipmapBlur />
+      </EffectComposer>
+    )
+  }
+
+  // Vignette only
+  if (settings.enableVignette) {
+    return (
+      <EffectComposer>
+        <Vignette offset={0.3} darkness={0.7} blendFunction={BlendFunction.NORMAL} />
+      </EffectComposer>
+    )
+  }
+
+  return null
+}
+
+/**
  * First-Person Navigation Controller with Transition Support
  * Manages player movement, camera, and room transitions in first-person mode.
  */
-function NavigationController({ roomConfig, onTransition }: { roomConfig: RoomConfig | null; onTransition: (toRoomIndex: number) => void }) {
+function NavigationController({ roomConfig, onTransition }: { roomConfig: RoomConfig | null; onTransition: (doorway: DoorwayPlacement) => void }) {
   // Initialize navigation system
   useNavigationInit()
 
@@ -65,8 +149,8 @@ function NavigationController({ roomConfig, onTransition }: { roomConfig: RoomCo
     enableAudioSway: true,
     baseFOV: 75,
     onTransition: (trigger) => {
-      // Trigger room transition when entering doorway
-      onTransition(trigger.doorway.leadsTo)
+      // Trigger room transition when entering doorway - pass the full doorway info
+      onTransition(trigger.doorway)
     },
   })
 
@@ -76,9 +160,11 @@ function NavigationController({ roomConfig, onTransition }: { roomConfig: RoomCo
 /**
  * Pointer Lock Overlay
  * Shows instructions when pointer is not locked.
+ * On mobile, tapping enters the experience without pointer lock.
  */
-function PointerLockOverlay() {
+function PointerLockOverlay({ isTouchDevice, onEnter }: { isTouchDevice: boolean; onEnter: () => void }) {
   const [isLocked, setIsLocked] = useState(false)
+  const [hasEntered, setHasEntered] = useState(false)
 
   useEffect(() => {
     const handleLockChange = () => {
@@ -88,12 +174,20 @@ function PointerLockOverlay() {
     return () => document.removeEventListener('pointerlockchange', handleLockChange)
   }, [])
 
-  const lock = useCallback(() => {
-    const canvas = document.querySelector('canvas')
-    canvas?.requestPointerLock()
-  }, [])
+  const enter = useCallback(() => {
+    if (isTouchDevice) {
+      // On mobile, just dismiss the overlay and enable touch controls
+      setHasEntered(true)
+      onEnter()
+    } else {
+      // On desktop, request pointer lock
+      const canvas = document.querySelector('canvas')
+      canvas?.requestPointerLock()
+    }
+  }, [isTouchDevice, onEnter])
 
-  if (isLocked) return null
+  // Hide overlay when entered (mobile) or pointer locked (desktop)
+  if (hasEntered || isLocked) return null
 
   return (
     <div
@@ -110,8 +204,13 @@ function PointerLockOverlay() {
         backgroundColor: 'rgba(26, 24, 52, 0.85)',
         zIndex: 100,
         cursor: 'pointer',
+        touchAction: 'none',
       }}
-      onClick={lock}
+      onClick={enter}
+      onTouchEnd={(e) => {
+        e.preventDefault()
+        enter()
+      }}
     >
       <div style={{
         color: '#c792f5',
@@ -119,7 +218,7 @@ function PointerLockOverlay() {
         fontFamily: 'monospace',
         marginBottom: '16px',
       }}>
-        Click to Enter
+        {isTouchDevice ? 'Tap to Enter' : 'Click to Enter'}
       </div>
       <div style={{
         color: '#8eecf5',
@@ -128,11 +227,22 @@ function PointerLockOverlay() {
         textAlign: 'center',
         maxWidth: '400px',
         lineHeight: '1.6',
+        padding: '0 20px',
       }}>
-        WASD / Arrow Keys - Move<br />
-        Mouse - Look Around<br />
-        Shift - Sprint<br />
-        ESC - Release Cursor
+        {isTouchDevice ? (
+          <>
+            Left Joystick - Move<br />
+            Right Zone - Look Around<br />
+            Center Button - Sprint
+          </>
+        ) : (
+          <>
+            WASD / Arrow Keys - Move<br />
+            Mouse - Look Around<br />
+            Shift - Sprint<br />
+            ESC - Release Cursor
+          </>
+        )}
       </div>
     </div>
   )
@@ -147,51 +257,91 @@ function Scene({ showCollisionDebug = false }: SceneProps) {
   const [currentRoomIndex, setCurrentRoomIndex] = useState(0)
   const [roomConfig, setRoomConfig] = useState<RoomConfig | null>(null)
 
+  // Track the entry wall for repositioning after transition
+  const pendingEntryRef = useRef<{ wall: import('./types/room').Wall; position: number } | null>(null)
+
+  // Performance settings
+  const perfSettings = usePerformanceSettings()
+
+  // Initialize room pool manager (singleton, keeps current +-2 rooms)
+  const poolManager = useMemo(() => getRoomPoolManager(42), [])
+
   // Initialize transition system
   const transition = useTransition({
     onTransitionComplete: (toRoom) => {
       // Room change happens at transition midpoint
       setCurrentRoomIndex(toRoom.index)
+
+      // Reposition player to entry point of new room
+      const entry = pendingEntryRef.current
+      if (entry) {
+        const navSystem = getNavigationSystem()
+        const entryPos = calculateEntryPosition(
+          entry.wall,
+          entry.position,
+          toRoom.dimensions,
+          DEFAULT_MOVEMENT_CONFIG.playerRadius
+        )
+        const entryYaw = calculateEntryYaw(entry.wall)
+        navSystem.setPosition(entryPos)
+        navSystem.setYaw(entryYaw)
+        navSystem.resetTransitionCooldown()
+        pendingEntryRef.current = null
+      }
     },
   })
 
-  // Generate room config for collision detection
-  const generator = useMemo(() => new RoomGenerator({ baseSeed: 42 }), [])
-
-  // Update room config when room index changes
+  // Cleanup pool manager on unmount
   useEffect(() => {
-    const config = generator.generateConfig(currentRoomIndex, null)
+    return () => {
+      disposeRoomPoolManager()
+    }
+  }, [])
+
+  // Update room config when room index changes.
+  // Uses the pool manager which handles visited room caching,
+  // adjacent room pre-generation, and disposal of distant rooms.
+  useEffect(() => {
+    // Update pool window — evicts far rooms, pre-generates adjacent configs
+    poolManager.setCurrentRoom(currentRoomIndex)
+
+    // Get config from pool (uses TransitionSystem cache or generates fresh)
+    const config = poolManager.getRoomConfig(currentRoomIndex)
     setRoomConfig(config)
 
     // Update wrongness system depth
     const wrongnessSystem = getWrongnessSystem()
     wrongnessSystem.setDepth(currentRoomIndex)
-  }, [currentRoomIndex, generator])
+
+    // Log pool stats periodically
+    const stats = poolManager.getStats()
+    console.log(
+      `[RoomPool] Room ${currentRoomIndex} | Pool: ${stats.poolSize}/${stats.maxPoolSize} | ` +
+      `GPU: ${(stats.estimatedGpuMemory / 1024 / 1024).toFixed(1)}MB/${(stats.gpuBudget / 1024 / 1024).toFixed(0)}MB | ` +
+      `Disposed: ${stats.disposedCount}`
+    )
+  }, [currentRoomIndex, poolManager])
 
   // Handle transition trigger from navigation
-  const handleTransition = useCallback((toRoomIndex: number) => {
+  const handleTransition = useCallback((doorway: DoorwayPlacement) => {
     // Get current room config
     const fromRoom = roomConfig
     if (!fromRoom) return
 
-    // Find the doorway being used (from NavigationSystem trigger)
+    // Check if already transitioning
     const transitionSystem = getTransitionSystem()
-    if (!transitionSystem) return
+    if (!transitionSystem || transitionSystem.isTransitioning()) return
 
-    // Get doorway from navigation trigger
-    // Note: The actual doorway info comes from NavigationSystem's trigger
-    // For now, we'll start the transition with the doorways in current room
-    if (fromRoom.doorways.length > 0) {
-      const doorway = fromRoom.doorways[0] // Use first doorway for simplicity
-      transition.startTransition(doorway, fromRoom, toRoomIndex)
-    }
+    // Store the entry wall for repositioning (enter from opposite wall of the exit doorway)
+    const entryWall = getOppositeWall(doorway.wall)
+    pendingEntryRef.current = { wall: entryWall, position: doorway.position }
+
+    // Start transition to the room the doorway leads to
+    transition.startTransition(doorway, fromRoom, doorway.leadsTo)
   }, [roomConfig, transition])
 
   // Memoize background color args
   const backgroundColorArgs = useMemo(() => [COLORS.background] as const, [])
-
-  // Enable post-processing for visual polish
-  const enablePostProcessing = true
 
   return (
     <>
@@ -204,6 +354,9 @@ function Scene({ showCollisionDebug = false }: SceneProps) {
 
       {/* Minimal fallback lighting - dynamic lights handled by RoomAtmosphere */}
       <ambientLight intensity={0.5} />
+
+      {/* FPS Monitor for adaptive quality */}
+      <FpsMonitor />
 
       {/* Growl System Controller - manages time-based dread effects */}
       {/* Camera effects disabled - handled by NavigationController */}
@@ -227,31 +380,8 @@ function Scene({ showCollisionDebug = false }: SceneProps) {
       {/* First-person navigation controller with transition support */}
       <NavigationController roomConfig={roomConfig} onTransition={handleTransition} />
 
-      {/* Post-processing effects pipeline - temporarily disabled */}
-      {enablePostProcessing && (
-        <EffectComposer>
-          {/* Bloom for glowing elements */}
-          <Bloom
-            intensity={0.5}
-            luminanceThreshold={0.2}
-            luminanceSmoothing={0.9}
-            mipmapBlur
-          />
-
-          {/* Growl-reactive chromatic aberration for color fringing */}
-          <GrowlReactiveChromaticAberration />
-
-          {/* Glitch effects - audio and Growl-triggered distortions */}
-          <GlitchEffect />
-
-          {/* Vignette for liminal atmosphere */}
-          <Vignette
-            offset={0.3}
-            darkness={0.7}
-            blendFunction={BlendFunction.NORMAL}
-          />
-        </EffectComposer>
-      )}
+      {/* Post-processing effects pipeline - conditional based on performance tier */}
+      <PostProcessingEffects settings={perfSettings} />
     </>
   )
 }
@@ -267,6 +397,13 @@ function App() {
   // Mobile touch controls (detect touch device)
   const [isTouchDevice, setIsTouchDevice] = useState(false)
 
+  // Mobile entry state (for enabling touch controls after tapping to enter)
+  const [mobileEntered, setMobileEntered] = useState(false)
+
+  // Performance settings
+  const perfSettings = usePerformanceSettings()
+  const perfTier = usePerformanceStore((state) => state.tier)
+
   // Initialize time store once on mount
   useEffect(() => {
     useTimeStore.getState().initialize()
@@ -274,6 +411,16 @@ function App() {
 
   useEffect(() => {
     setIsTouchDevice('ontouchstart' in window || navigator.maxTouchPoints > 0)
+  }, [])
+
+  // Log detected performance tier
+  useEffect(() => {
+    console.log(`[Performance] Detected tier: ${perfTier}, DPR: ${perfSettings.pixelRatio.toFixed(2)}`)
+  }, [perfTier, perfSettings.pixelRatio])
+
+  // Handle mobile enter
+  const handleMobileEnter = useCallback(() => {
+    setMobileEntered(true)
   }, [])
 
   // Handle audio permission granted
@@ -300,11 +447,14 @@ function App() {
           near: 0.1,
           far: 2000,
         }}
+        dpr={perfSettings.pixelRatio}
         gl={{
-          antialias: true,
+          antialias: perfSettings.antialias,
           toneMapping: THREE.ACESFilmicToneMapping,
           toneMappingExposure: 1.0,
+          powerPreference: 'high-performance',
         }}
+        performance={{ min: 0.5 }}
       >
         <Scene showCollisionDebug={showCollisionDebug} />
       </Canvas>
@@ -319,12 +469,12 @@ function App() {
       {audioPermissionGranted && (
         <Controls
           onFirstMovement={handleFirstMovement}
-          enableTouchControls={isTouchDevice}
+          enableTouchControls={isTouchDevice && mobileEntered}
         />
       )}
 
       {/* Pointer lock overlay with instructions */}
-      <PointerLockOverlay />
+      <PointerLockOverlay isTouchDevice={isTouchDevice} onEnter={handleMobileEnter} />
 
       {/* Debug Overlay - unified debug panel system */}
       <DebugOverlay

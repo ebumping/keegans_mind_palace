@@ -32,6 +32,7 @@ interface AtmosphereLightsProps {
   lightCount?: number;
   baseIntensity?: number;
   castShadows?: boolean;
+  shadowMapSize?: number;
 }
 
 // Simple noise function for flicker
@@ -55,6 +56,7 @@ export function AtmosphereLights({
   lightCount = 3,
   baseIntensity = 0.8,
   castShadows = true,
+  shadowMapSize = 512,
 }: AtmosphereLightsProps) {
   const lightsRef = useRef<THREE.PointLight[]>([]);
   const ambientRef = useRef<THREE.AmbientLight>(null);
@@ -177,8 +179,8 @@ export function AtmosphereLights({
           distance={15}
           decay={2}
           castShadow={castShadows}
-          shadow-mapSize-width={512}
-          shadow-mapSize-height={512}
+          shadow-mapSize-width={shadowMapSize}
+          shadow-mapSize-height={shadowMapSize}
           shadow-camera-near={0.5}
           shadow-camera-far={20}
           shadow-bias={-0.001}

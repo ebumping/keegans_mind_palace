@@ -43,8 +43,13 @@ interface LightFlickerState {
 export class GrowlDrone {
   private audioContext: AudioContext;
   private oscillator: OscillatorNode;
+  private harmonicOsc: OscillatorNode;
+  private noiseSource: AudioBufferSourceNode | null = null;
   private gainNode: GainNode;
+  private harmonicGain: GainNode;
+  private noiseGain: GainNode;
   private filterNode: BiquadFilterNode;
+  private noiseFilter: BiquadFilterNode;
   private lfoOscillator: OscillatorNode;
   private lfoGain: GainNode;
   private isStarted: boolean = false;
@@ -52,43 +57,89 @@ export class GrowlDrone {
   constructor(audioContext: AudioContext) {
     this.audioContext = audioContext;
 
-    // Primary oscillator for sub-bass
+    // Primary oscillator — 60Hz base is audible on laptop speakers
+    // (30Hz was below most laptop frequency response cutoff ~80Hz)
     this.oscillator = audioContext.createOscillator();
     this.oscillator.type = 'sine';
-    this.oscillator.frequency.value = 30;
+    this.oscillator.frequency.value = 60;
 
-    // LFO for subtle modulation
+    // Second harmonic oscillator — adds body and perceptibility
+    // Sits at ~1.5x the fundamental for a dark, dissonant rumble
+    this.harmonicOsc = audioContext.createOscillator();
+    this.harmonicOsc.type = 'triangle';
+    this.harmonicOsc.frequency.value = 90;
+
+    this.harmonicGain = audioContext.createGain();
+    this.harmonicGain.gain.value = 0;
+
+    // Filtered noise layer — adds texture and unease
+    this.noiseGain = audioContext.createGain();
+    this.noiseGain.gain.value = 0;
+
+    this.noiseFilter = audioContext.createBiquadFilter();
+    this.noiseFilter.type = 'bandpass';
+    this.noiseFilter.frequency.value = 80;
+    this.noiseFilter.Q.value = 2;
+
+    // Create noise buffer (2 seconds of brown noise)
+    const bufferSize = audioContext.sampleRate * 2;
+    const noiseBuffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+    const data = noiseBuffer.getChannelData(0);
+    let lastOut = 0;
+    for (let i = 0; i < bufferSize; i++) {
+      const white = Math.random() * 2 - 1;
+      // Brown noise: integrate white noise with leaky integrator
+      lastOut = (lastOut + 0.02 * white) / 1.02;
+      data[i] = lastOut * 3.5;
+    }
+    this.noiseSource = audioContext.createBufferSource();
+    this.noiseSource.buffer = noiseBuffer;
+    this.noiseSource.loop = true;
+
+    // LFO for subtle frequency modulation
     this.lfoOscillator = audioContext.createOscillator();
     this.lfoOscillator.type = 'sine';
     this.lfoOscillator.frequency.value = 0.1; // Very slow modulation
 
     this.lfoGain = audioContext.createGain();
-    this.lfoGain.gain.value = 5; // Modulate frequency by ±5Hz
+    this.lfoGain.gain.value = 8; // Modulate frequency by ±8Hz
 
-    // Low-pass filter to soften harmonics
+    // Low-pass filter to keep it sub-bass
     this.filterNode = audioContext.createBiquadFilter();
     this.filterNode.type = 'lowpass';
-    this.filterNode.frequency.value = 80;
-    this.filterNode.Q.value = 1;
+    this.filterNode.frequency.value = 120;
+    this.filterNode.Q.value = 0.7;
 
     // Main gain for volume control
     this.gainNode = audioContext.createGain();
     this.gainNode.gain.value = 0; // Start silent
 
-    // Connect LFO to oscillator frequency
+    // Connect LFO to both oscillator frequencies
     this.lfoOscillator.connect(this.lfoGain);
     this.lfoGain.connect(this.oscillator.frequency);
+    this.lfoGain.connect(this.harmonicOsc.frequency);
 
     // Connect main signal path: oscillator → filter → gain → destination
     this.oscillator.connect(this.filterNode);
     this.filterNode.connect(this.gainNode);
     this.gainNode.connect(audioContext.destination);
+
+    // Connect harmonic: harmonicOsc → harmonicGain → destination
+    this.harmonicOsc.connect(this.harmonicGain);
+    this.harmonicGain.connect(audioContext.destination);
+
+    // Connect noise: noiseSource → noiseFilter → noiseGain → destination
+    this.noiseSource.connect(this.noiseFilter);
+    this.noiseFilter.connect(this.noiseGain);
+    this.noiseGain.connect(audioContext.destination);
   }
 
   start(): void {
     if (this.isStarted) return;
     this.oscillator.start();
+    this.harmonicOsc.start();
     this.lfoOscillator.start();
+    this.noiseSource?.start();
     this.isStarted = true;
   }
 
@@ -103,16 +154,39 @@ export class GrowlDrone {
       now + 0.1
     );
 
-    // Smooth volume transition - keep it subtle!
-    // Max volume is effects.droneVolume * 0.25 for barely perceptible effect
+    // Harmonic tracks at ~1.5x fundamental
+    this.harmonicOsc.frequency.linearRampToValueAtTime(
+      effects.droneFrequency * 1.5,
+      now + 0.1
+    );
+
+    // Noise filter center tracks fundamental
+    this.noiseFilter.frequency.linearRampToValueAtTime(
+      effects.droneFrequency * 1.2,
+      now + 0.2
+    );
+
+    // Smooth volume transition — audible but still subliminal
     this.gainNode.gain.linearRampToValueAtTime(
-      effects.droneVolume * 0.25,
+      effects.droneVolume * 0.4,
+      now + 0.5
+    );
+
+    // Harmonic at ~60% of fundamental volume
+    this.harmonicGain.gain.linearRampToValueAtTime(
+      effects.droneVolume * 0.24,
+      now + 0.5
+    );
+
+    // Noise layer at ~30% — adds texture without dominating
+    this.noiseGain.gain.linearRampToValueAtTime(
+      effects.droneVolume * 0.12,
       now + 0.5
     );
 
     // Modulate LFO depth based on intensity
     this.lfoGain.gain.linearRampToValueAtTime(
-      3 + effects.droneVolume * 4,
+      4 + effects.droneVolume * 8,
       now + 0.5
     );
   }
@@ -120,9 +194,16 @@ export class GrowlDrone {
   dispose(): void {
     if (this.isStarted) {
       this.oscillator.stop();
+      this.harmonicOsc.stop();
       this.lfoOscillator.stop();
+      this.noiseSource?.stop();
     }
     this.oscillator.disconnect();
+    this.harmonicOsc.disconnect();
+    this.harmonicGain.disconnect();
+    this.noiseSource?.disconnect();
+    this.noiseFilter.disconnect();
+    this.noiseGain.disconnect();
     this.lfoOscillator.disconnect();
     this.lfoGain.disconnect();
     this.filterNode.disconnect();

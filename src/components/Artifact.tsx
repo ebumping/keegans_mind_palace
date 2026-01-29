@@ -484,15 +484,14 @@ function SingleArtifact({ config, seed }: SingleArtifactProps) {
     // === Transient-based visibility ===
     s.transientCooldown = Math.max(0, s.transientCooldown - delta);
 
-    if (audioLevels.transient && !s.lastTransient && s.transientCooldown <= 0) {
-      // Transient detected - trigger visibility change
-      if (audioLevels.transientIntensity > config.transientSensitivity) {
-        // Flash effect: temporarily boost or reduce visibility
-        s.visibility = s.visibility > 0.5 ? 0.2 : 1.2;
-        s.transientCooldown = 0.3; // Cooldown to prevent rapid flashing
-      }
+    const isTransient = audioLevels.transientIntensity > config.transientSensitivity;
+    if (isTransient && !s.lastTransient && s.transientCooldown <= 0) {
+      // Transient detected - trigger visibility change proportional to intensity
+      const flashStrength = audioLevels.transientIntensity;
+      s.visibility = s.visibility > 0.5 ? (0.2 + (1 - flashStrength) * 0.3) : (0.8 + flashStrength * 0.4);
+      s.transientCooldown = 0.3; // Cooldown to prevent rapid flashing
     }
-    s.lastTransient = audioLevels.transient;
+    s.lastTransient = isTransient;
 
     // Smooth visibility return to normal
     s.visibility = THREE.MathUtils.lerp(s.visibility, 1, delta * 2);

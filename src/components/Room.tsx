@@ -16,8 +16,18 @@ import { Paintings } from './Painting';
 import { Sculptures } from './Sculpture';
 import { Furniture } from './Furniture';
 import { MelancholicLight } from './MelancholicLight';
-import { Doorways } from './Doorways';
+import { CeilingLights } from './CeilingLights';
+import { VerticalElements } from './VerticalElements';
+import { CircuitryOverlay } from './CircuitryOverlay';
+import { VariationEffects } from './VariationEffects';
+import { DoorwayShimmer } from './DoorwayShimmer';
+import { DoorwayProximityGlow } from './DoorwayProximityGlow';
+import { FakeDoors } from './FakeDoors';
+import { WrongShadows } from './WrongShadows';
 import type { Wall, GeneratedRoom, RoomConfig } from '../types/room';
+import { getGlitchSystem } from '../systems/GlitchSystem';
+import { getAmbientSoundHints } from '../systems/AmbientSoundHints';
+import { getRoomPoolManager } from '../systems/RoomPoolManager';
 
 interface RoomProps {
   roomIndex?: number;
@@ -61,6 +71,21 @@ export function Room({
     // Store config for atmosphere component
     setRoomConfig(room.config);
 
+    // Register generated room with the pool manager for memory tracking
+    const poolManager = getRoomPoolManager();
+    poolManager.setGeneratedRoom(roomIndex, room);
+
+    // Register shader materials with GlitchSystem for geometry glitch effects
+    const glitchSystem = getGlitchSystem();
+    const registeredIds: string[] = [];
+    room.materials.forEach((material, i) => {
+      if (material instanceof THREE.ShaderMaterial && material.uniforms.u_geometryGlitch) {
+        const id = `room-${roomIndex}-mat-${i}`;
+        glitchSystem.registerMaterial(id, material);
+        registeredIds.push(id);
+      }
+    });
+
     // Add to scene
     if (groupRef.current) {
       // Clear previous children (except React-managed ones)
@@ -75,12 +100,27 @@ export function Room({
 
     // Cleanup on unmount
     return () => {
+      // Unregister materials from GlitchSystem
+      registeredIds.forEach(id => glitchSystem.unregisterMaterial(id));
+
       if (roomRef.current) {
         roomRef.current.dispose();
         roomRef.current = null;
       }
     };
   }, [generator, roomIndex, entryWall]);
+
+  // Start archetype-specific ambient sound when room changes
+  useEffect(() => {
+    if (!roomConfig?.archetype) return;
+
+    const ambientSound = getAmbientSoundHints();
+    ambientSound.start(roomConfig.archetype);
+
+    return () => {
+      ambientSound.stop();
+    };
+  }, [roomConfig?.archetype]);
 
   // Update room with audio levels each frame
   useFrame((_, delta) => {
@@ -119,7 +159,7 @@ export function Room({
         <Artifact
           dimensions={roomConfig.dimensions}
           seed={roomConfig.seed + 5000}
-          count={Math.floor(3 + roomConfig.abnormality * 5)}
+          count={Math.floor(4 + Math.sqrt(roomConfig.dimensions.width * roomConfig.dimensions.depth) / 3 + roomConfig.abnormality * 3)}
           abnormality={roomConfig.abnormality}
           enabled={true}
         />
@@ -160,24 +200,95 @@ export function Room({
         />
       )}
 
+      {/* Vertical Elements - Sunken areas, platforms, pits, shafts */}
+      {roomConfig && roomConfig.verticalElements && roomConfig.verticalElements.length > 0 && (
+        <VerticalElements
+          dimensions={roomConfig.dimensions}
+          verticalElements={roomConfig.verticalElements}
+          roomIndex={roomConfig.index}
+          seed={roomConfig.seed + 15000}
+          enabled={true}
+        />
+      )}
+
+      {/* Circuitry Overlay - Glowing circuit traces on walls/floor */}
+      {roomConfig && roomConfig.circuitry && (
+        <CircuitryOverlay
+          dimensions={roomConfig.dimensions}
+          circuitry={roomConfig.circuitry}
+          roomIndex={roomConfig.index}
+          seed={roomConfig.seed + 7000}
+          enabled={true}
+        />
+      )}
+
+      {/* Ceiling Lights - Dynamic fixtures from room config */}
+      {roomConfig && roomConfig.ceilingConfig && (
+        <CeilingLights
+          dimensions={roomConfig.dimensions}
+          ceilingConfig={roomConfig.ceilingConfig}
+          archetype={roomConfig.archetype}
+          roomIndex={roomConfig.index}
+          seed={roomConfig.seed}
+          wrongnessLightingBehavior={roomConfig.wrongness?.lightingBehavior}
+          enabled={true}
+        />
+      )}
+
       {/* Melancholic Light - Beauty that makes you sad */}
       {roomConfig && (
         <MelancholicLight
           roomDimensions={roomConfig.dimensions}
           roomIndex={roomConfig.index}
           seed={roomConfig.seed + 20000}
+          archetype={roomConfig.archetype}
           enabled={true}
         />
       )}
 
-      {/* Doorway Portals */}
+      {/* Portal Variation Effects - Levels 1-5 visual rendering */}
       {roomConfig && (
-        <Doorways
-          doorways={roomConfig.doorways}
-          doorwayGeometry={roomConfig.doorwayGeometry}
-          dimensions={roomConfig.dimensions}
-          seed={roomConfig.seed + 15000}
+        <VariationEffects
+          roomConfig={roomConfig}
           enabled={true}
+        />
+      )}
+
+      {/* Doorway Proximity Glow - Intensifies as player approaches */}
+      {roomConfig && roomConfig.doorways.length > 0 && (
+        <DoorwayProximityGlow
+          doorways={roomConfig.doorways}
+          roomDimensions={roomConfig.dimensions}
+          enabled={true}
+        />
+      )}
+
+      {/* Doorway Shimmer - Indicates variation level of rooms beyond doorways */}
+      {roomConfig && roomConfig.doorways.length > 0 && (
+        <DoorwayShimmer
+          doorways={roomConfig.doorways}
+          roomDimensions={roomConfig.dimensions}
+          enabled={true}
+        />
+      )}
+
+      {/* Fake Doors - Sealed doorways that lead nowhere (wrongness system) */}
+      {roomConfig && roomConfig.fakeDoors && roomConfig.fakeDoors.length > 0 && (
+        <FakeDoors
+          fakeDoors={roomConfig.fakeDoors}
+          roomDimensions={roomConfig.dimensions}
+          wrongnessLevel={roomConfig.wrongness?.level ?? 1}
+          seed={roomConfig.seed + 25000}
+        />
+      )}
+
+      {/* Wrong Shadows - Lights casting shadows from impossible directions */}
+      {roomConfig && roomConfig.wrongness &&
+       roomConfig.wrongness.lightingBehavior === 'wrong_direction' && (
+        <WrongShadows
+          dimensions={roomConfig.dimensions}
+          wrongnessLevel={roomConfig.wrongness.level}
+          seed={roomConfig.seed + 30000}
         />
       )}
     </group>

@@ -99,16 +99,42 @@ export function generateFurnitureForRoom(
   const appropriateFurniture = ARCHETYPE_FURNITURE[arch] || [];
   const wrongFurniture = WRONG_FURNITURE[arch] || [];
 
-  // Calculate count based on room size and archetype
-  const baseCount = Math.floor(roomDimensions.width * roomDimensions.depth / 25);
-  let count = Math.max(1, Math.min(6, baseCount + 1));
+  // Calculate count based on room size, archetype density, and depth
+  // Room area drives a base count, but density label sets the range
+  const roomArea = roomDimensions.width * roomDimensions.depth;
 
-  // Some archetypes have specific counts
-  if (arch === RoomArchetype.WAITING_ROOM) {
-    count = Math.max(4, count); // Many chairs
-  } else if (arch === RoomArchetype.PARKING || arch === RoomArchetype.STAIRWELL) {
-    count = 1; // Minimal furniture
-  }
+  // Density labels now map to meaningful count ranges
+  // Each archetype's density label actually controls how furnished the room feels
+  const densityConfig: Record<string, { min: number; max: number; perArea: number }> = {
+    crowded:  { min: 8,  max: 20, perArea: 0.012 },  // Waiting rooms: packed
+    high:     { min: 5,  max: 14, perArea: 0.008 },   // Living rooms, offices: well-furnished
+    moderate: { min: 3,  max: 10, perArea: 0.005 },   // Kitchens, bathrooms: functional
+    sparse:   { min: 2,  max: 6,  perArea: 0.003 },   // Bedrooms, corridors: minimal but present
+    none:     { min: 0,  max: 2,  perArea: 0.001 },   // Parking, stairwells: almost empty
+  };
+
+  // Look up the archetype's density from the spec
+  const densityLabels: Record<RoomArchetype, string> = {
+    [RoomArchetype.LIVING_ROOM]: 'high',
+    [RoomArchetype.KITCHEN]: 'moderate',
+    [RoomArchetype.BEDROOM]: 'sparse',
+    [RoomArchetype.BATHROOM]: 'moderate',
+    [RoomArchetype.CORRIDOR_OF_DOORS]: 'sparse',
+    [RoomArchetype.WAITING_ROOM]: 'crowded',
+    [RoomArchetype.OFFICE]: 'high',
+    [RoomArchetype.STAIRWELL]: 'none',
+    [RoomArchetype.ELEVATOR_BANK]: 'sparse',
+    [RoomArchetype.STORE]: 'high',
+    [RoomArchetype.RESTAURANT]: 'high',
+    [RoomArchetype.ATRIUM]: 'sparse',
+    [RoomArchetype.PARKING]: 'none',
+    [RoomArchetype.GENERIC]: 'moderate',
+  };
+
+  const densityLabel = densityLabels[arch] || 'moderate';
+  const density = densityConfig[densityLabel];
+  const areaBasedCount = Math.floor(roomArea * density.perArea);
+  let count = Math.max(density.min, Math.min(density.max, areaBasedCount + density.min));
 
   // Generate furniture pieces
   for (let i = 0; i < count; i++) {

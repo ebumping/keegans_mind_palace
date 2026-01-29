@@ -73,26 +73,50 @@ export function generatePaintingsForRoom(
   const level = wrongness?.level ?? WrongnessLevel.SUBTLE;
   const abnormality = 1 - Math.exp(-roomIndex / 20);
 
-  // Number of paintings based on room size and depth
-  const baseCount = Math.floor(roomDimensions.width * roomDimensions.depth / 40);
-  const count = Math.max(1, Math.min(4, baseCount + Math.floor(abnormality * 2)));
+  // Number of paintings based on wall perimeter and room depth
+  // Larger rooms have more wall space and deserve more art
+  const wallPerimeter = 2 * (roomDimensions.width + roomDimensions.depth);
+  const baseCount = Math.floor(wallPerimeter / 8); // ~1 painting per 8 units of wall
+  const depthBonus = Math.floor(abnormality * 3);
+  const count = Math.max(2, Math.min(10, baseCount + depthBonus));
 
-  // Determine which walls get paintings
+  // Determine which walls get paintings - larger walls can hold multiple
   const walls = getAvailableWalls(roomDimensions);
-  const shuffledWalls = rng.shuffle(walls);
 
-  for (let i = 0; i < count && i < shuffledWalls.length; i++) {
-    const wall = shuffledWalls[i];
+  // Build a list of wall slots: larger walls get multiple painting positions
+  const wallSlots: { wall: Wall; horizontalPos: number }[] = [];
+  for (const wall of walls) {
+    const wallWidth = (wall === Wall.NORTH || wall === Wall.SOUTH)
+      ? roomDimensions.width
+      : roomDimensions.depth;
+
+    // Number of painting positions on this wall (1 per ~6 units, min 1)
+    const slotsOnWall = Math.max(1, Math.floor(wallWidth / 6));
+    for (let s = 0; s < slotsOnWall; s++) {
+      // Distribute positions evenly along the wall (0.15 to 0.85 range)
+      const pos = slotsOnWall === 1
+        ? 0.5
+        : 0.15 + (s / (slotsOnWall - 1)) * 0.7;
+      wallSlots.push({ wall, horizontalPos: pos });
+    }
+  }
+
+  const shuffledSlots = rng.shuffle(wallSlots);
+
+  for (let i = 0; i < count && i < shuffledSlots.length; i++) {
+    const slot = shuffledSlots[i];
     const paintingSeed = seed + 8000 + i * 1000;
     const painting = generatePainting(
       paintingSeed,
       i,
-      wall,
+      slot.wall,
       roomDimensions,
       level,
       abnormality,
       rng
     );
+    // Adjust horizontal position based on slot
+    painting.placement.horizontalPosition = slot.horizontalPos;
     paintings.push(painting);
   }
 
@@ -162,6 +186,7 @@ function generatePainting(
     dimensions,
     colors,
     seed,
+    wall,
     audioBand,
     audioReactivity,
   };

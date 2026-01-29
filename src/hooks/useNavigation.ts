@@ -20,8 +20,10 @@ import {
   type TransitionTrigger,
   type CollisionResult,
 } from '../systems/NavigationSystem';
+import { calculateGrowlShake } from '../systems/GrowlSystem';
 import type { RoomConfig, Wall } from '../types/room';
 import { useAudioStore } from '../store/audioStore';
+import { useTimeStore } from '../store/timeStore';
 
 // ============================================
 // Navigation System Init Hook
@@ -141,8 +143,13 @@ export function useNavigation(options: UseNavigationOptions = {}): UseNavigation
           mid: storeState.mid,
           high: storeState.high,
           transient: storeState.transient,
+          transientIntensity: storeState.transientIntensity,
         }
       : undefined;
+
+    // Pipe Growl intensity into navigation drift scaling
+    const growlIntensity = useTimeStore.getState().growlIntensity;
+    systemRef.current.setGrowlIntensity(growlIntensity);
 
     // Update navigation system
     systemRef.current.update(delta, audioInput, state.clock.elapsedTime);
@@ -152,6 +159,11 @@ export function useNavigation(options: UseNavigationOptions = {}): UseNavigation
 
     camera.position.copy(transform.position);
 
+    // Apply Growl camera shake — multi-frequency disorienting offset
+    const { growlEffects: shakeEffects } = useTimeStore.getState();
+    const shakeOffset = calculateGrowlShake(shakeEffects, state.clock.elapsedTime);
+    camera.position.add(shakeOffset);
+
     // Apply rotation - use YXZ order to prevent gimbal lock
     // Now includes roll for transient stumbles
     camera.rotation.order = 'YXZ';
@@ -159,9 +171,15 @@ export function useNavigation(options: UseNavigationOptions = {}): UseNavigation
     camera.rotation.x = transform.pitch;
     camera.rotation.z = transform.roll; // Camera roll for stumbles and wrongness
 
-    // Apply FOV offset for audio reactivity
-    if (camera instanceof THREE.PerspectiveCamera && enableAudioSway) {
-      const targetFOV = baseFOV + transform.fovOffset;
+    // Apply FOV offset — audio reactivity + Growl breathing distortion
+    if (camera instanceof THREE.PerspectiveCamera) {
+      const { growlEffects } = useTimeStore.getState();
+      const growlFOV = growlEffects.fovDistortion > 0.01
+        ? Math.sin(state.clock.elapsedTime * 0.3) * growlEffects.fovDistortion * 0.5
+          + (Math.sin(state.clock.elapsedTime * 5) > 0.95 ? growlEffects.fovDistortion : 0)
+        : 0;
+      const audioFOV = enableAudioSway ? transform.fovOffset : 0;
+      const targetFOV = baseFOV + audioFOV + growlFOV;
       camera.fov = THREE.MathUtils.lerp(camera.fov, targetFOV, delta * 10);
       camera.updateProjectionMatrix();
     }
@@ -248,6 +266,7 @@ export function useNavigationCamera(
           mid: storeState.mid,
           high: storeState.high,
           transient: storeState.transient,
+          transientIntensity: storeState.transientIntensity,
         }
       : undefined;
 

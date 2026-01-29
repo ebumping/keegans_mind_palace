@@ -3,6 +3,8 @@
  */
 
 import type * as THREE from 'three';
+import type { CircuitTrace } from '../generators/CircuitryGenerator';
+import type { EvolvingCorridor } from '../generators/CorridorGenerator';
 
 // Room types as const objects (erasableSyntaxOnly compatible)
 export const RoomType = {
@@ -152,6 +154,8 @@ export interface WrongnessConfig {
   level: WrongnessLevel;
   proportionSkew: number;      // How much room proportions are wrong
   wallAngleVariance: number;   // Wall angle deviation in radians
+  ceilingVariance: number;     // 0-0.3: Ceiling height inconsistency per segment
+  fakeDoorChance: number;      // 0-0.4: Probability of spawning fake doors
   furnitureOrientation: 'normal' | 'offset' | 'wrong' | 'hostile' | 'gravity_defiant';
   doorPlacement: 'logical' | 'wrong' | 'impossible';
   lightingBehavior: 'normal' | 'flicker' | 'sourceless' | 'wrong_direction';
@@ -164,10 +168,9 @@ export interface DoorwayPlacement {
   width: number;
   height: number;
   leadsTo: number; // Target room index
-  // Polygon edge placement (optional — for non-rectangular rooms)
-  edgeIndex?: number;        // Index of polygon edge this doorway is on
-  edgeStart?: Point2D;       // Start vertex of the edge
-  edgeEnd?: Point2D;         // End vertex of the edge
+  // Polygon edge data for non-rectangular shapes
+  edgeStart?: Point2D;  // Start vertex of the polygon edge
+  edgeEnd?: Point2D;    // End vertex of the polygon edge
 }
 
 export interface DoorwayGeometry {
@@ -208,6 +211,23 @@ export interface RoomConfig {
   archetype?: RoomArchetype;         // Room archetype (living room, kitchen, etc.)
   verticalElements?: VerticalElement[];  // Sunken areas, platforms, mezzanines
   wrongness?: WrongnessConfig;       // Wrongness configuration
+  circuitry?: CircuitTrace;          // Circuit trace overlay data (when spawned)
+  corridor?: EvolvingCorridor;       // Corridor evolution data (for corridor-type rooms)
+  fakeDoors?: DoorwayPlacement[];    // Fake doors that lead nowhere (wrongness system)
+  // Portal variation system properties
+  variationLevel?: number;           // 0-5 variation level applied to this room
+  variationChanges?: VariationChangeRef[];  // Array of applied variation changes
+  lightColorShift?: number;          // Hue shift in degrees from Level 1
+  textReversed?: boolean;            // Level 3: mirror all text
+  gravityShift?: { x: number; y: number; z: number };  // Level 4: gravity direction
+  dimensionBleed?: string;           // Level 5: alternate aesthetic name
+  voidIntensity?: number;            // Level 5: void room darkness (0-1)
+}
+
+// Reference type for variation changes stored on config
+export interface VariationChangeRef {
+  kind: string;
+  [key: string]: unknown;
 }
 
 export interface AudioLevels {

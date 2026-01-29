@@ -122,7 +122,7 @@ function getGrowlEffects(level: number, phase: GrowlPhase): GrowlEffects {
   return {
     // Audio ramps in during Distant phase
     droneVolume: phase === GrowlPhase.SILENT ? 0 : Math.min(level * 1.5, 0.8),
-    droneFrequency: 25 + level * 15,  // 25-40 Hz
+    droneFrequency: 50 + level * 30,  // 50-80 Hz — audible on laptop speakers
 
     // Visual effects start in Present phase
     shadowMovementChance: level > 0.2 ? (level - 0.2) * 0.01 : 0,

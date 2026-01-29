@@ -157,6 +157,8 @@ export function generateWrongnessConfig(
     level,
     proportionSkew: params.proportionSkew,
     wallAngleVariance: params.wallAngleVariance,
+    ceilingVariance: params.ceilingVariance,
+    fakeDoorChance: params.fakeDoorChance,
     furnitureOrientation,
     doorPlacement,
     lightingBehavior,

@@ -24,7 +24,7 @@ import {
   PaintingWrongnessType,
   type PaintingConfig,
 } from '../types/art';
-import { Wall, type RoomDimensions, type WrongnessConfig } from '../types/room';
+import { type RoomDimensions, type WrongnessConfig } from '../types/room';
 import {
   generatePaintingsForRoom,
   getPaintingPosition,
@@ -823,7 +823,7 @@ function SinglePainting({ config, position, rotation }: SinglePaintingProps) {
     }
 
     // Subtle tilt variation on transient
-    if (audioLevels.transient && audioLevels.transientIntensity > 0.6) {
+    if (audioLevels.transientIntensity > 0.6) {
       groupRef.current.rotation.z += (Math.random() - 0.5) * 0.002 * config.audioReactivity;
     }
   });
@@ -894,15 +894,12 @@ export function Paintings({
 
   if (!enabled || paintings.length === 0) return null;
 
-  // Assign walls to paintings
-  const walls: Wall[] = [Wall.NORTH, Wall.SOUTH, Wall.EAST, Wall.WEST];
-  const rng = new SeededRandom(seed + 9000);
-
   return (
     <group>
-      {paintings.map((config, index) => {
-        const wall = walls[index % walls.length];
-        const horizontalPosition = 0.3 + rng.range(0, 0.4);
+      {paintings.map((config) => {
+        // Use the wall and horizontal position stored in the config
+        const wall = config.wall;
+        const horizontalPosition = config.placement.horizontalPosition ?? 0.5;
 
         const position = getPaintingPosition(wall, dimensions, config, horizontalPosition);
         const rotation = getPaintingRotation(wall, config.placement.tilt);

@@ -32,6 +32,7 @@ import type {
   GeneratedRoom,
   RoomShapeConfig,
   Point2D,
+  WrongnessConfig,
 } from '../types/room';
 import {
   createLiminalMaterial,
@@ -54,6 +55,11 @@ import {
   applyWrongnessToShape,
   getWrongnessSystem,
 } from '../systems/WrongnessSystem';
+import {
+  CircuitryGenerator,
+  shouldSpawnCircuitry,
+} from './CircuitryGenerator';
+import { getCorridorGenerator } from './CorridorGenerator';
 
 // Pale-strata color palette
 const COLORS = {
@@ -63,6 +69,87 @@ const COLORS = {
   secondary: '#8eecf5',
   gradientStart: '#3a3861',
   gradientEnd: '#2c2c4b',
+};
+
+// Archetype-specific atmosphere tints — subtle color shifts that differentiate spaces
+// Each entry modifies the liminal shader's gradient colors to evoke the archetype's mood
+interface ArchetypeAtmosphere {
+  gradientStart: THREE.Color;
+  gradientEnd: THREE.Color;
+  primary: THREE.Color;
+}
+
+const ARCHETYPE_ATMOSPHERES: Partial<Record<RoomArchetype, ArchetypeAtmosphere>> = {
+  // Domestic — warm, faded tones
+  [RoomArchetype.LIVING_ROOM]: {
+    gradientStart: new THREE.Color('#4a3850'),  // dusty mauve
+    gradientEnd: new THREE.Color('#352a3a'),
+    primary: new THREE.Color('#d4a5a5'),        // dusty rose warmth
+  },
+  [RoomArchetype.KITCHEN]: {
+    gradientStart: new THREE.Color('#3d4a3d'),  // sickly green-grey
+    gradientEnd: new THREE.Color('#2a332a'),
+    primary: new THREE.Color('#a5c9a5'),        // pale institutional green
+  },
+  [RoomArchetype.BEDROOM]: {
+    gradientStart: new THREE.Color('#3a3555'),  // deep twilight blue
+    gradientEnd: new THREE.Color('#28253d'),
+    primary: new THREE.Color('#9b8aa5'),        // muted lavender
+  },
+  [RoomArchetype.BATHROOM]: {
+    gradientStart: new THREE.Color('#354550'),  // cold ceramic blue-grey
+    gradientEnd: new THREE.Color('#252f38'),
+    primary: new THREE.Color('#8eaab5'),        // sterile blue
+  },
+  // Institutional — cold, sterile
+  [RoomArchetype.CORRIDOR_OF_DOORS]: {
+    gradientStart: new THREE.Color('#3f3d38'),  // beige-brown corridor
+    gradientEnd: new THREE.Color('#2e2c28'),
+    primary: new THREE.Color('#c4b89b'),        // faded beige
+  },
+  [RoomArchetype.WAITING_ROOM]: {
+    gradientStart: new THREE.Color('#404040'),  // neutral grey
+    gradientEnd: new THREE.Color('#2d2d2d'),
+    primary: new THREE.Color('#b0b0b0'),        // institutional grey
+  },
+  [RoomArchetype.OFFICE]: {
+    gradientStart: new THREE.Color('#383d45'),  // corporate blue-grey
+    gradientEnd: new THREE.Color('#282c32'),
+    primary: new THREE.Color('#8ea5c5'),        // fluorescent-lit blue
+  },
+  // Transitional — stark, echoing
+  [RoomArchetype.STAIRWELL]: {
+    gradientStart: new THREE.Color('#3a3a3a'),  // raw concrete
+    gradientEnd: new THREE.Color('#252525'),
+    primary: new THREE.Color('#a0a0a0'),        // bare concrete grey
+  },
+  [RoomArchetype.ELEVATOR_BANK]: {
+    gradientStart: new THREE.Color('#3d3835'),  // brushed metal warmth
+    gradientEnd: new THREE.Color('#2a2825'),
+    primary: new THREE.Color('#c0b0a0'),        // brass-tinted
+  },
+  // Commercial — artificial brightness gone wrong
+  [RoomArchetype.STORE]: {
+    gradientStart: new THREE.Color('#454038'),  // retail fluorescent yellow-ish
+    gradientEnd: new THREE.Color('#302d28'),
+    primary: new THREE.Color('#d5c8a0'),        // cheap fluorescent warmth
+  },
+  [RoomArchetype.RESTAURANT]: {
+    gradientStart: new THREE.Color('#45352a'),  // warm wood tones
+    gradientEnd: new THREE.Color('#302520'),
+    primary: new THREE.Color('#d4a87c'),        // candlelit amber
+  },
+  // Void — oppressive, vast
+  [RoomArchetype.ATRIUM]: {
+    gradientStart: new THREE.Color('#2a2a3a'),  // void-touched indigo
+    gradientEnd: new THREE.Color('#1a1a28'),
+    primary: new THREE.Color('#7070a0'),        // distant blue
+  },
+  [RoomArchetype.PARKING]: {
+    gradientStart: new THREE.Color('#353530'),  // sodium-lit concrete
+    gradientEnd: new THREE.Color('#252520'),
+    primary: new THREE.Color('#c0b080'),        // sodium vapor yellow
+  },
 };
 
 export interface RoomGeneratorOptions {
@@ -109,7 +196,7 @@ export class RoomGenerator {
     const archetypeGenerator = getArchetypeRoomGenerator();
 
     // Generate dimensions based on archetype
-    const type = this.getRoomType(rng, abnormality);
+    const type = this.getRoomType(rng, abnormality, roomIndex);
     let dimensions: RoomDimensions;
 
     if (archetype !== RoomArchetype.GENERIC) {
@@ -118,11 +205,23 @@ export class RoomGenerator {
       dimensions = this.getRoomDimensions(rng, type, abnormality);
     }
 
-    // Generate non-rectangular room shape
-    const shapeWeights = getShapeWeights(roomIndex);
-    const shapeType = selectShape(rng, shapeWeights);
-    const shapeGenerator = getRoomShapeGenerator();
-    let shape = shapeGenerator.generate(shapeType, dimensions, abnormality, seed);
+    // Generate corridor data if this is a corridor-type room
+    let corridorData = undefined;
+    let shape: RoomShapeConfig;
+
+    if (type === RoomType.CORRIDOR) {
+      // Use CorridorGenerator for evolving corridor geometry
+      const corridorGen = getCorridorGenerator();
+      corridorData = corridorGen.generate(dimensions, roomIndex, abnormality, seed + 4000);
+      // Convert corridor to room shape for wall/floor rendering
+      shape = corridorGen.toRoomShape(corridorData, dimensions);
+    } else {
+      // Generate non-rectangular room shape
+      const shapeWeights = getShapeWeights(roomIndex);
+      const shapeType = selectShape(rng, shapeWeights);
+      const shapeGenerator = getRoomShapeGenerator();
+      shape = shapeGenerator.generate(shapeType, dimensions, abnormality, seed);
+    }
 
     // Generate wrongness configuration
     const wrongness = generateWrongnessConfig(roomIndex, growlIntensity, seed);
@@ -140,6 +239,15 @@ export class RoomGenerator {
       seed + 3000
     );
 
+    // Generate circuitry overlay if room qualifies
+    let circuitry = undefined;
+    if (shouldSpawnCircuitry(seed, roomIndex, growlIntensity)) {
+      const circuitryGen = new CircuitryGenerator(24, 0.1);
+      // Density scales with depth — deeper rooms get denser traces
+      const density = 0.3 + Math.min(abnormality * 0.3, 0.3);
+      circuitry = circuitryGen.generate(1, 1, seed + 7000, density);
+    }
+
     const complexity = this.getComplexity(type, rng, abnormality);
     const doorwayCount = this.getDoorwayCount(type, rng);
     const doorways = this.placeDoorwaysForShape(
@@ -152,9 +260,12 @@ export class RoomGenerator {
     );
     const doorwayGeometry = this.getDoorwayGeometry(rng, abnormality);
     const wallFeatures = this.getWallFeatures(rng, abnormality);
-    const floorType = this.getFloorType(rng, abnormality);
-    const ceilingConfig = this.getCeilingConfig(rng, abnormality, dimensions.height);
+    const floorType = this.getFloorType(rng, abnormality, archetype);
+    const ceilingConfig = this.getCeilingConfig(rng, abnormality, dimensions.height, archetype);
     const nonEuclidean = this.getNonEuclideanConfig(rng, abnormality);
+
+    // Generate fake doors based on wrongness
+    const fakeDoors = this.generateFakeDoors(wrongness, dimensions, doorways, rng);
 
     return {
       index: roomIndex,
@@ -174,23 +285,170 @@ export class RoomGenerator {
       archetype,
       verticalElements,
       wrongness,
+      circuitry,
+      corridor: corridorData,
+      fakeDoors,
     };
   }
 
   /**
-   * Place doorways on non-rectangular shapes
+   * Place doorways on non-rectangular shapes along actual polygon edges.
+   * Falls back to rectangular placement for rectangular shapes or when
+   * polygon data is unavailable.
    */
   private placeDoorwaysForShape(
     roomIndex: number,
     dimensions: RoomDimensions,
-    _shape: RoomShapeConfig,
+    shape: RoomShapeConfig,
     count: number,
     seed: number,
     entryWall: Wall | null
   ): DoorwayPlacement[] {
-    // For now, fall back to rectangular doorway placement
-    // TODO: Place doorways on polygon edges for non-rectangular shapes
-    return this.placeDoorways(roomIndex, dimensions, count, seed, entryWall);
+    // For rectangular shapes or missing polygon data, use rectangular placement
+    if (
+      !shape ||
+      shape.type === RoomShape.RECTANGLE ||
+      shape.vertices.length < 3
+    ) {
+      return this.placeDoorways(roomIndex, dimensions, count, seed, entryWall);
+    }
+
+    return this.placeDoorwaysOnPolygonEdges(
+      roomIndex,
+      dimensions,
+      shape,
+      count,
+      seed,
+      entryWall
+    );
+  }
+
+  /**
+   * Calculate valid wall segments from shape vertices and place doorways
+   * on polygon edges. Filters out edges that are too short for a doorway
+   * and distributes doorways across different edges for spatial variety.
+   */
+  private placeDoorwaysOnPolygonEdges(
+    roomIndex: number,
+    dimensions: RoomDimensions,
+    shape: RoomShapeConfig,
+    count: number,
+    seed: number,
+    entryWall: Wall | null
+  ): DoorwayPlacement[] {
+    const rng = new SeededRandom(seed + 2000);
+    const vertices = shape.vertices;
+    const minDoorWidth = 3.0; // Minimum doorway width
+    const defaultDoorWidth = rng.range(2.5, 4.0);
+
+    // Build list of valid edges with their lengths and wall classifications
+    interface EdgeInfo {
+      index: number;
+      start: Point2D;
+      end: Point2D;
+      length: number;
+      wall: Wall; // Closest cardinal wall classification
+      midX: number;
+      midY: number;
+      angle: number;
+    }
+
+    const edges: EdgeInfo[] = [];
+    for (let i = 0; i < vertices.length; i++) {
+      const start = vertices[i];
+      const end = vertices[(i + 1) % vertices.length];
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const length = Math.sqrt(dx * dx + dy * dy);
+
+      // Skip edges too short to fit a doorway (door width + margin)
+      if (length < minDoorWidth + 1.0) continue;
+
+      const angle = Math.atan2(dy, dx);
+      const midX = (start.x + end.x) / 2;
+      const midY = (start.y + end.y) / 2;
+
+      // Classify edge into nearest cardinal wall direction based on
+      // the outward-facing normal. For a CCW polygon, the outward normal
+      // of edge (dx,dy) points in direction (dy, -dx).
+      const normalAngle = Math.atan2(-dx, dy);
+      const wall = this.classifyEdgeAsWall(normalAngle);
+
+      edges.push({ index: i, start, end, length, wall, midX, midY, angle });
+    }
+
+    // If no valid edges found, fall back to rectangular placement
+    if (edges.length === 0) {
+      return this.placeDoorways(roomIndex, dimensions, count, seed, entryWall);
+    }
+
+    // Filter out entry wall edges if we have an entry wall
+    let availableEdges = entryWall
+      ? edges.filter((e) => e.wall !== entryWall)
+      : [...edges];
+
+    // If filtering removed all edges, use all edges
+    if (availableEdges.length === 0) {
+      availableEdges = [...edges];
+    }
+
+    // Shuffle for variety
+    const shuffled = rng.shuffle(availableEdges);
+
+    // Place doorways on distinct edges, distributing across different walls
+    const placements: DoorwayPlacement[] = [];
+    const usedEdgeIndices = new Set<number>();
+
+    for (let i = 0; i < count && shuffled.length > 0; i++) {
+      // Prefer unused edges for variety
+      let edge = shuffled.find((e) => !usedEdgeIndices.has(e.index));
+      if (!edge) {
+        // All edges used, allow reuse
+        edge = shuffled[i % shuffled.length];
+      }
+
+      usedEdgeIndices.add(edge.index);
+
+      // Place doorway at a random position along the edge, keeping away
+      // from vertices (corners). Clamp so the door doesn't overhang.
+      const doorWidth = Math.min(defaultDoorWidth, edge.length - 1.0);
+      const margin = (doorWidth / 2 + 0.5) / edge.length; // Half door + buffer
+      const position = rng.range(
+        Math.max(0.15, margin),
+        Math.min(0.85, 1 - margin)
+      );
+
+      placements.push({
+        wall: edge.wall,
+        position,
+        width: doorWidth,
+        height: rng.range(3.5, Math.min(5.0, dimensions.height - 1.0)),
+        leadsTo: roomIndex + i + 1,
+        edgeStart: edge.start,
+        edgeEnd: edge.end,
+      });
+    }
+
+    return placements;
+  }
+
+  /**
+   * Classify a polygon edge's outward normal angle into the nearest
+   * cardinal Wall direction. This allows the existing Wall-based systems
+   * (collision, navigation) to work with polygon doorways.
+   */
+  private classifyEdgeAsWall(normalAngle: number): Wall {
+    // Normalize to [0, 2π)
+    const a = ((normalAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+
+    // North: normal points toward -Z (angle ≈ -π/2 or 3π/2)
+    // South: normal points toward +Z (angle ≈ π/2)
+    // East:  normal points toward +X (angle ≈ 0)
+    // West:  normal points toward -X (angle ≈ π)
+    if (a >= Math.PI * 0.25 && a < Math.PI * 0.75) return Wall.SOUTH;
+    if (a >= Math.PI * 0.75 && a < Math.PI * 1.25) return Wall.WEST;
+    if (a >= Math.PI * 1.25 && a < Math.PI * 1.75) return Wall.NORTH;
+    return Wall.EAST;
   }
 
   /**
@@ -244,6 +502,11 @@ export class RoomGenerator {
     // Track elapsed time for shader updates
     let elapsedTime = 0;
 
+    // Corridor breathing state — walls reference for dynamic width animation
+    const corridorData = config.corridor;
+    const corridorWallMeshes = config.type === RoomType.CORRIDOR ? wallMeshes : [];
+    const corridorGen = config.type === RoomType.CORRIDOR ? getCorridorGenerator() : null;
+
     const room: GeneratedRoom = {
       config,
       mesh: group,
@@ -253,6 +516,22 @@ export class RoomGenerator {
 
       update(audioLevels: AudioLevels, delta: number) {
         elapsedTime += delta;
+
+        // Corridor breathing: pulse wall scale with bass frequency
+        if (corridorData && corridorGen) {
+          const breatheOffset = corridorGen.updateBreathing(
+            corridorData,
+            audioLevels.bass,
+            elapsedTime
+          );
+          // Apply breathing as X-axis scale (width pulse) to wall meshes
+          if (breatheOffset !== 0) {
+            const breatheScale = 1 + breatheOffset * 0.15;
+            corridorWallMeshes.forEach((mesh) => {
+              mesh.scale.x = breatheScale;
+            });
+          }
+        }
 
         // Non-euclidean room scaling based on audio levels
         const breatheAmount = audioLevels.bass * 0.02;
@@ -302,7 +581,13 @@ export class RoomGenerator {
   // Configuration generation methods
   // ============================================
 
-  private getRoomType(rng: SeededRandom, abnormality: number): RoomType {
+  private getRoomType(rng: SeededRandom, abnormality: number, roomIndex: number = 0): RoomType {
+    // Every 3rd room (indices 2, 5, 8, 11...) is a corridor connecting standard rooms
+    // This creates a rhythm: room → room → corridor → room → room → corridor
+    if (roomIndex > 0 && roomIndex % 3 === 2) {
+      return RoomType.CORRIDOR;
+    }
+
     const roll = rng.next();
 
     if (roll < 0.4) return RoomType.STANDARD;
@@ -475,9 +760,31 @@ export class RoomGenerator {
     return features;
   }
 
-  private getFloorType(rng: SeededRandom, abnormality: number): FloorType {
+  private getFloorType(rng: SeededRandom, abnormality: number, archetype?: RoomArchetype): FloorType {
     if (abnormality > 0.6 && rng.chance(abnormality * 0.3)) {
       return FloorType.VOID;
+    }
+
+    // Archetype-specific floor material mapping
+    if (archetype) {
+      const archetypeFloors: Partial<Record<RoomArchetype, FloorType>> = {
+        [RoomArchetype.BEDROOM]: FloorType.CARPET,
+        [RoomArchetype.LIVING_ROOM]: FloorType.CARPET,
+        [RoomArchetype.KITCHEN]: FloorType.TILE,
+        [RoomArchetype.BATHROOM]: FloorType.TILE,
+        [RoomArchetype.OFFICE]: FloorType.CARPET,
+        [RoomArchetype.WAITING_ROOM]: FloorType.TILE,
+        [RoomArchetype.CORRIDOR_OF_DOORS]: FloorType.TILE,
+        [RoomArchetype.STAIRWELL]: FloorType.CONCRETE,
+        [RoomArchetype.ELEVATOR_BANK]: FloorType.TILE,
+        [RoomArchetype.STORE]: FloorType.TILE,
+        [RoomArchetype.RESTAURANT]: FloorType.WOOD,
+        [RoomArchetype.ATRIUM]: FloorType.TILE,
+        [RoomArchetype.PARKING]: FloorType.CONCRETE,
+      };
+
+      const mapped = archetypeFloors[archetype];
+      if (mapped) return mapped;
     }
 
     const types = [FloorType.CARPET, FloorType.TILE, FloorType.WOOD, FloorType.CONCRETE];
@@ -487,14 +794,45 @@ export class RoomGenerator {
   private getCeilingConfig(
     rng: SeededRandom,
     abnormality: number,
-    baseHeight: number
+    baseHeight: number,
+    archetype?: RoomArchetype
   ): CeilingConfig {
+    // Archetype-specific ceiling treatment: lighting type and skylight probability
+    interface CeilingPreset {
+      lightingType: CeilingConfig['lightingType'];
+      skylightChance: number;
+      hasLighting: boolean;
+    }
+
+    const archetypeCeilings: Partial<Record<RoomArchetype, CeilingPreset>> = {
+      // Domestic
+      [RoomArchetype.LIVING_ROOM]: { lightingType: 'recessed', skylightChance: 0.15, hasLighting: true },
+      [RoomArchetype.KITCHEN]: { lightingType: 'fluorescent', skylightChance: 0.05, hasLighting: true },
+      [RoomArchetype.BEDROOM]: { lightingType: 'recessed', skylightChance: 0.1, hasLighting: true },
+      [RoomArchetype.BATHROOM]: { lightingType: 'fluorescent', skylightChance: 0.0, hasLighting: true },
+      // Institutional
+      [RoomArchetype.CORRIDOR_OF_DOORS]: { lightingType: 'fluorescent', skylightChance: 0.0, hasLighting: true },
+      [RoomArchetype.WAITING_ROOM]: { lightingType: 'fluorescent', skylightChance: 0.05, hasLighting: true },
+      [RoomArchetype.OFFICE]: { lightingType: 'fluorescent', skylightChance: 0.0, hasLighting: true },
+      // Transitional
+      [RoomArchetype.STAIRWELL]: { lightingType: 'bare_bulb', skylightChance: 0.0, hasLighting: true },
+      [RoomArchetype.ELEVATOR_BANK]: { lightingType: 'recessed', skylightChance: 0.0, hasLighting: true },
+      // Commercial
+      [RoomArchetype.STORE]: { lightingType: 'fluorescent', skylightChance: 0.1, hasLighting: true },
+      [RoomArchetype.RESTAURANT]: { lightingType: 'recessed', skylightChance: 0.0, hasLighting: true },
+      // Void
+      [RoomArchetype.ATRIUM]: { lightingType: 'none', skylightChance: 0.4, hasLighting: false },
+      [RoomArchetype.PARKING]: { lightingType: 'bare_bulb', skylightChance: 0.0, hasLighting: true },
+    };
+
+    const preset = archetype ? archetypeCeilings[archetype] : undefined;
+
     return {
       height: baseHeight,
-      hasLighting: rng.next() > abnormality * 0.5,
-      lightingType: rng.pick(['recessed', 'fluorescent', 'bare_bulb', 'none']),
-      hasSkylight: rng.chance(0.1),
-      isVisible: true, // Always render ceilings — no black void above the player
+      hasLighting: preset ? preset.hasLighting : rng.next() > abnormality * 0.5,
+      lightingType: preset ? preset.lightingType : rng.pick(['recessed', 'fluorescent', 'bare_bulb', 'none']),
+      hasSkylight: rng.chance(preset ? preset.skylightChance : 0.1),
+      isVisible: !(abnormality > 0.4 && rng.chance(abnormality * 0.3)),
     };
   }
 
@@ -508,6 +846,53 @@ export class RoomGenerator {
     };
   }
 
+  /**
+   * Generate fake doors that lead nowhere — sealed shut, wrongly placed
+   */
+  private generateFakeDoors(
+    wrongness: WrongnessConfig,
+    dimensions: RoomDimensions,
+    realDoorways: DoorwayPlacement[],
+    rng: SeededRandom
+  ): DoorwayPlacement[] {
+    if (wrongness.fakeDoorChance <= 0) return [];
+
+    const fakeDoors: DoorwayPlacement[] = [];
+    const allWalls = Object.values(Wall);
+
+    // Number of fake doors scales with wrongness level
+    const maxFakeDoors = Math.min(wrongness.level, 3);
+
+    for (let i = 0; i < maxFakeDoors; i++) {
+      if (!rng.chance(wrongness.fakeDoorChance)) continue;
+
+      // Pick a wall, preferring walls without real doors for maximum wrongness
+      const wallsWithDoors = new Set(realDoorways.map(d => d.wall));
+      const emptyWalls = allWalls.filter(w => !wallsWithDoors.has(w));
+      const wall = emptyWalls.length > 0 ? rng.pick(emptyWalls) : rng.pick(allWalls);
+
+      // Fake doors can be placed anywhere — even near corners (wrongness)
+      const position = rng.range(0.1, 0.9);
+
+      // Size variance: fake doors can be wrong-sized
+      const sizeWrong = wrongness.level >= 3;
+      const width = sizeWrong ? rng.range(1.5, 5.0) : rng.range(2.5, 3.5);
+      const height = sizeWrong
+        ? rng.range(2.0, Math.min(dimensions.height - 0.5, 6.0))
+        : rng.range(3.0, Math.min(dimensions.height - 1.0, 4.5));
+
+      fakeDoors.push({
+        wall,
+        position,
+        width,
+        height,
+        leadsTo: -1, // Leads nowhere
+      });
+    }
+
+    return fakeDoors;
+  }
+
   // ============================================
   // Geometry generation methods
   // ============================================
@@ -519,6 +904,12 @@ export class RoomGenerator {
   } {
     // Use polygon-based wall creation for non-rectangular shapes
     if (config.shape && config.shape.type !== RoomShape.RECTANGLE) {
+      return this.createWallsFromPolygon(config);
+    }
+
+    // For rectangular rooms with wrongness, use polygon-based rendering
+    // so that skewed vertices actually affect wall geometry
+    if (config.shape && config.wrongness && config.wrongness.proportionSkew > 0.01) {
       return this.createWallsFromPolygon(config);
     }
 
@@ -619,17 +1010,16 @@ export class RoomGenerator {
 
   /**
    * Create walls from polygon vertices for non-rectangular room shapes.
-   * Each polygon edge produces a visible, properly UV-mapped wall mesh
-   * with normals facing inward toward the polygon centroid.
+   * For curved/spiral shapes, merges consecutive curved edges into single
+   * smooth meshes to avoid visible faceting. Cuts doorway holes where needed.
    */
   private createWallsFromPolygon(config: RoomConfig): {
     wallMeshes: THREE.Mesh[];
     wallGeoms: THREE.BufferGeometry[];
     wallMats: THREE.Material[];
   } {
-    const { shape, dimensions } = config;
+    const { shape, dimensions, doorways } = config;
     if (!shape) {
-      // Fallback to rectangular
       return this.createWalls({ ...config, shape: undefined });
     }
 
@@ -643,85 +1033,258 @@ export class RoomGenerator {
     const height = dimensions.height;
     const vertices = shape.vertices;
 
-    // Compute polygon centroid for determining inward direction
-    let cx = 0, cy = 0;
-    for (const v of vertices) {
-      cx += v.x;
-      cy += v.y;
-    }
-    cx /= vertices.length;
-    cy /= vertices.length;
-
-    // Create a wall segment for each edge of the polygon
-    for (let i = 0; i < vertices.length; i++) {
-      const v1 = vertices[i];
-      const v2 = vertices[(i + 1) % vertices.length];
-
-      // Calculate wall dimensions and orientation
-      const dx = v2.x - v1.x;
-      const dy = v2.y - v1.y;
-      const wallLength = Math.sqrt(dx * dx + dy * dy);
-
-      if (wallLength < 0.1) continue; // Skip degenerate edges
-
-      // Wall center position (x, y are floor coordinates mapped to x, z in 3D)
-      const centerX = (v1.x + v2.x) / 2;
-      const centerZ = (v1.y + v2.y) / 2;
-
-      // Edge direction angle
-      const angle = Math.atan2(dy, dx);
-
-      // Determine the outward normal of this edge
-      // For edge from v1 to v2, the two possible normals are at angle +/- PI/2
-      // Pick the one pointing away from centroid (outward), then flip for inward-facing plane
-      const normalCandidate1X = Math.cos(angle + Math.PI / 2);
-      const normalCandidate1Y = Math.sin(angle + Math.PI / 2);
-
-      // Vector from edge center to centroid
-      const toCentroidX = cx - centerX;
-      const toCentroidZ = cy - centerZ;
-
-      // Dot product: if positive, normalCandidate1 points toward centroid (inward)
-      const dot = normalCandidate1X * toCentroidX + normalCandidate1Y * toCentroidZ;
-
-      // We want the plane's front face (default normal = +Z in local space) to face inward
-      // PlaneGeometry faces +Z in local space before rotation
-      // Rotation around Y by theta makes the plane face direction (sin(theta), 0, cos(theta))
-      // We want that direction to point inward (toward centroid)
-      let facingAngle: number;
-      if (dot > 0) {
-        // normalCandidate1 points inward — plane should face that direction
-        facingAngle = angle + Math.PI / 2;
-      } else {
-        // normalCandidate2 points inward
-        facingAngle = angle - Math.PI / 2;
+    // Build a set of edge indices that belong to curves for fast lookup
+    const curvedEdgeIndices = new Set<number>();
+    if (shape.wallCurves) {
+      for (const curve of shape.wallCurves) {
+        curvedEdgeIndices.add(curve.startIndex);
       }
+    }
 
-      // PlaneGeometry default normal is (0,0,1). Rotating by Y=theta faces it toward (sin(theta), 0, cos(theta)).
-      // We want the facing direction = (sin(rotY), 0, cos(rotY)) = (cos(facingAngle), 0, sin(facingAngle)) mapped to 3D xz
-      // Since in 3D: x=x, z=y(2D), the inward normal in 3D is (inwardX, 0, inwardZ)
-      // where inwardX = cos(facingAngle), inwardZ = sin(facingAngle)
-      // For PlaneGeometry rotated by rotY around Y: normal = (sin(rotY), 0, cos(rotY))
-      // So sin(rotY) = cos(facingAngle), cos(rotY) = sin(facingAngle)
-      // rotY = atan2(cos(facingAngle), sin(facingAngle)) = PI/2 - facingAngle
-      const rotY = Math.PI / 2 - facingAngle;
+    // Group consecutive curved edges into runs for merged rendering.
+    // Non-curved edges render individually as flat planes.
+    const edgeGroups = this.groupEdgesForRendering(vertices, curvedEdgeIndices);
 
-      // Create wall geometry with enough segments for audio-reactive vertex displacement
-      const geometry = new THREE.PlaneGeometry(wallLength, height, 4, 4);
-      this.applyUVMapping(geometry, wallLength, height);
+    for (const group of edgeGroups) {
+      if (group.isCurved && group.edgeIndices.length > 1) {
+        // Merge consecutive curved edges into a single smooth wall mesh
+        const mergedResult = this.createMergedCurvedWall(
+          vertices,
+          group.edgeIndices,
+          height,
+          doorways,
+          material
+        );
+        if (mergedResult) {
+          wallMeshes.push(...mergedResult.meshes);
+          wallGeoms.push(...mergedResult.geometries);
+        }
+      } else {
+        // Render individual edge(s) as flat wall planes
+        for (const edgeIdx of group.edgeIndices) {
+          const v1 = vertices[edgeIdx];
+          const v2 = vertices[(edgeIdx + 1) % vertices.length];
 
-      const mesh = new THREE.Mesh(geometry, material);
+          const dx = v2.x - v1.x;
+          const dy = v2.y - v1.y;
+          const wallLength = Math.sqrt(dx * dx + dy * dy);
 
-      // Position: center of wall edge, half height up
-      mesh.position.set(centerX, height / 2, centerZ);
-      mesh.rotation.set(0, rotY, 0);
-      mesh.receiveShadow = true;
+          if (wallLength < 0.1) continue;
 
-      wallMeshes.push(mesh);
-      wallGeoms.push(geometry);
+          const centerX = (v1.x + v2.x) / 2;
+          const centerY = (v1.y + v2.y) / 2;
+          const angle = Math.atan2(dy, dx);
+
+          const edgeDoorways = this.findEdgeDoorways(doorways, v1, v2);
+          let geometry: THREE.BufferGeometry;
+
+          if (edgeDoorways.length > 0) {
+            geometry = this.createWallWithCutouts(wallLength, height, edgeDoorways, 2);
+          } else {
+            geometry = new THREE.PlaneGeometry(wallLength, height, 2, 2);
+            this.applyUVMapping(geometry, wallLength, height);
+          }
+
+          const mesh = new THREE.Mesh(geometry, material);
+          mesh.position.set(centerX, height / 2, centerY);
+          mesh.rotation.set(0, -angle + Math.PI / 2, 0);
+          mesh.receiveShadow = true;
+
+          wallMeshes.push(mesh);
+          wallGeoms.push(geometry);
+        }
+      }
     }
 
     return { wallMeshes, wallGeoms, wallMats };
+  }
+
+  /**
+   * Group consecutive polygon edges into runs of curved or flat edges.
+   * Consecutive curved edges are merged into a single group for smooth rendering.
+   */
+  private groupEdgesForRendering(
+    vertices: Point2D[],
+    curvedEdgeIndices: Set<number>
+  ): Array<{ isCurved: boolean; edgeIndices: number[] }> {
+    const groups: Array<{ isCurved: boolean; edgeIndices: number[] }> = [];
+    const totalEdges = vertices.length;
+
+    let i = 0;
+    while (i < totalEdges) {
+      const isCurved = curvedEdgeIndices.has(i);
+      const group: number[] = [i];
+      i++;
+
+      // Extend group while next edge has same curved status
+      while (i < totalEdges && curvedEdgeIndices.has(i) === isCurved) {
+        group.push(i);
+        i++;
+      }
+
+      groups.push({ isCurved, edgeIndices: group });
+    }
+
+    return groups;
+  }
+
+  /**
+   * Create a single merged wall mesh from consecutive curved polygon edges.
+   * Uses BufferGeometry with a triangle strip to produce a smooth curved surface.
+   */
+  private createMergedCurvedWall(
+    vertices: Point2D[],
+    edgeIndices: number[],
+    wallHeight: number,
+    doorways: DoorwayPlacement[],
+    material: THREE.Material
+  ): { meshes: THREE.Mesh[]; geometries: THREE.BufferGeometry[] } | null {
+    // Collect all vertices along the curve (including the last endpoint)
+    const curvePoints: Point2D[] = [];
+    for (const idx of edgeIndices) {
+      curvePoints.push(vertices[idx]);
+    }
+    // Add the endpoint of the last edge
+    const lastIdx = edgeIndices[edgeIndices.length - 1];
+    curvePoints.push(vertices[(lastIdx + 1) % vertices.length]);
+
+    if (curvePoints.length < 2) return null;
+
+    // Check if any doorways are placed on edges in this group
+    const groupDoorways: Array<{ doorway: DoorwayPlacement; edgeLocalIdx: number }> = [];
+    for (let i = 0; i < edgeIndices.length; i++) {
+      const idx = edgeIndices[i];
+      const v1 = vertices[idx];
+      const v2 = vertices[(idx + 1) % vertices.length];
+      const edgeDoors = this.findEdgeDoorways(doorways, v1, v2);
+      for (const d of edgeDoors) {
+        groupDoorways.push({ doorway: d, edgeLocalIdx: i });
+      }
+    }
+
+    // If doorways exist in this curve group, fall back to per-edge rendering
+    // for those edges (doorway cutouts need flat wall segments)
+    if (groupDoorways.length > 0) {
+      const meshes: THREE.Mesh[] = [];
+      const geometries: THREE.BufferGeometry[] = [];
+
+      for (let i = 0; i < edgeIndices.length; i++) {
+        const idx = edgeIndices[i];
+        const v1 = vertices[idx];
+        const v2 = vertices[(idx + 1) % vertices.length];
+
+        const dx = v2.x - v1.x;
+        const dy = v2.y - v1.y;
+        const wallLength = Math.sqrt(dx * dx + dy * dy);
+        if (wallLength < 0.1) continue;
+
+        const centerX = (v1.x + v2.x) / 2;
+        const centerY = (v1.y + v2.y) / 2;
+        const angle = Math.atan2(dy, dx);
+
+        const edgeDoors = this.findEdgeDoorways(doorways, v1, v2);
+        let geometry: THREE.BufferGeometry;
+
+        if (edgeDoors.length > 0) {
+          geometry = this.createWallWithCutouts(wallLength, wallHeight, edgeDoors, 2);
+        } else {
+          geometry = new THREE.PlaneGeometry(wallLength, wallHeight, 1, 1);
+          this.applyUVMapping(geometry, wallLength, wallHeight);
+        }
+
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.set(centerX, wallHeight / 2, centerY);
+        mesh.rotation.set(0, -angle + Math.PI / 2, 0);
+        mesh.receiveShadow = true;
+
+        meshes.push(mesh);
+        geometries.push(geometry);
+      }
+
+      return { meshes, geometries };
+    }
+
+    // Build a single smooth curved wall as custom BufferGeometry.
+    // Two rows of vertices: bottom (y=0) and top (y=wallHeight).
+    // Each curve point becomes a column in the mesh.
+    const numPoints = curvePoints.length;
+    const posArray = new Float32Array(numPoints * 2 * 3); // 2 rows, 3 components
+    const uvArray = new Float32Array(numPoints * 2 * 2);  // 2 rows, 2 components
+    const indexArray: number[] = [];
+
+    // Calculate cumulative arc length for UV mapping
+    const arcLengths: number[] = [0];
+    for (let i = 1; i < numPoints; i++) {
+      const dx = curvePoints[i].x - curvePoints[i - 1].x;
+      const dy = curvePoints[i].y - curvePoints[i - 1].y;
+      arcLengths.push(arcLengths[i - 1] + Math.sqrt(dx * dx + dy * dy));
+    }
+    const totalArcLength = arcLengths[numPoints - 1] || 1;
+
+    for (let i = 0; i < numPoints; i++) {
+      const p = curvePoints[i];
+      const u = arcLengths[i] / totalArcLength;
+
+      // Bottom vertex (row 0)
+      const bi = i * 2;
+      posArray[bi * 3 + 0] = p.x;
+      posArray[bi * 3 + 1] = 0;
+      posArray[bi * 3 + 2] = p.y;
+      uvArray[bi * 2 + 0] = u * totalArcLength; // Scale UV by real-world size
+      uvArray[bi * 2 + 1] = 0;
+
+      // Top vertex (row 1)
+      const ti = i * 2 + 1;
+      posArray[ti * 3 + 0] = p.x;
+      posArray[ti * 3 + 1] = wallHeight;
+      posArray[ti * 3 + 2] = p.y;
+      uvArray[ti * 2 + 0] = u * totalArcLength;
+      uvArray[ti * 2 + 1] = wallHeight;
+    }
+
+    // Build triangle indices: two triangles per quad between adjacent columns
+    for (let i = 0; i < numPoints - 1; i++) {
+      const bl = i * 2;       // bottom-left
+      const tl = i * 2 + 1;   // top-left
+      const br = (i + 1) * 2; // bottom-right
+      const tr = (i + 1) * 2 + 1; // top-right
+
+      // Triangle 1: bl, br, tl
+      indexArray.push(bl, br, tl);
+      // Triangle 2: tl, br, tr
+      indexArray.push(tl, br, tr);
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+    geometry.setAttribute('uv', new THREE.BufferAttribute(uvArray, 2));
+    geometry.setIndex(indexArray);
+    geometry.computeVertexNormals();
+
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.receiveShadow = true;
+
+    return { meshes: [mesh], geometries: [geometry] };
+  }
+
+  /**
+   * Find doorways placed on a specific polygon edge by matching endpoints.
+   */
+  private findEdgeDoorways(
+    doorways: DoorwayPlacement[],
+    v1: Point2D,
+    v2: Point2D
+  ): DoorwayPlacement[] {
+    return doorways.filter((d) => {
+      if (!d.edgeStart || !d.edgeEnd) return false;
+      const eps = 0.01;
+      return (
+        Math.abs(d.edgeStart.x - v1.x) < eps &&
+        Math.abs(d.edgeStart.y - v1.y) < eps &&
+        Math.abs(d.edgeEnd.x - v2.x) < eps &&
+        Math.abs(d.edgeEnd.y - v2.y) < eps
+      );
+    });
   }
 
   private createWallWithCutouts(
@@ -778,9 +1341,14 @@ export class RoomGenerator {
     const material = this.createFloorMaterial(floorType, config.abnormality, config);
     let geometry: THREE.BufferGeometry;
 
-    // Use polygon shape for non-rectangular rooms
-    if (shape && shape.type !== RoomShape.RECTANGLE && shape.vertices.length >= 3) {
-      geometry = this.createPolygonFloor(shape.vertices);
+    // Use polygon shape for non-rectangular rooms or wrongness-skewed rooms
+    const usePolygonFloor = shape && shape.vertices.length >= 3 && (
+      shape.type !== RoomShape.RECTANGLE ||
+      (config.wrongness && config.wrongness.proportionSkew > 0.01)
+    );
+
+    if (usePolygonFloor) {
+      geometry = this.createPolygonFloor(shape!.vertices);
     } else {
       const segments = Math.max(1, complexity);
       geometry = new THREE.PlaneGeometry(width, depth, segments, segments);
@@ -796,7 +1364,9 @@ export class RoomGenerator {
   }
 
   /**
-   * Create floor geometry from polygon vertices
+   * Create floor geometry from polygon vertices.
+   * Uses higher tessellation for shapes with many vertices (curved/spiral)
+   * so that the floor outline matches smooth wall rendering.
    */
   private createPolygonFloor(vertices: Point2D[]): THREE.BufferGeometry {
     const shape = new THREE.Shape();
@@ -812,7 +1382,9 @@ export class RoomGenerator {
     }
     shape.closePath();
 
-    const geometry = new THREE.ShapeGeometry(shape, 2);
+    // Higher curveSegments for shapes with many vertices (curved/spiral rooms)
+    const curveSegments = vertices.length > 20 ? 4 : 2;
+    const geometry = new THREE.ShapeGeometry(shape, curveSegments);
 
     // Apply UV mapping based on bounding box
     const positions = geometry.getAttribute('position');
@@ -854,9 +1426,14 @@ export class RoomGenerator {
 
     let geometry: THREE.BufferGeometry;
 
-    // Use polygon shape for non-rectangular rooms
-    if (shape && shape.type !== RoomShape.RECTANGLE && shape.vertices.length >= 3) {
-      geometry = this.createPolygonFloor(shape.vertices);
+    // Use polygon shape for non-rectangular rooms or wrongness-skewed rooms
+    const usePolygonCeiling = shape && shape.vertices.length >= 3 && (
+      shape.type !== RoomShape.RECTANGLE ||
+      (config.wrongness && config.wrongness.proportionSkew > 0.01)
+    );
+
+    if (usePolygonCeiling) {
+      geometry = this.createPolygonFloor(shape!.vertices);
     } else {
       const segments = Math.max(1, complexity);
       geometry = new THREE.PlaneGeometry(width, depth, segments, segments);
@@ -877,6 +1454,41 @@ export class RoomGenerator {
 
     const material = createLiminalMaterial(materialConfig);
     material.side = THREE.BackSide;
+
+    // Apply archetype-specific color tinting to ceiling material
+    this.applyArchetypeAtmosphere(material, config.archetype);
+
+    // Apply ceiling height variance from wrongness system
+    // Displaces ceiling vertices to create uneven, unsettling ceiling geometry
+    const ceilingVariance = config.wrongness?.ceilingVariance ?? 0;
+    if (ceilingVariance > 0.01) {
+      // For polygon ceilings, re-create with more subdivision for displacement
+      if (!usePolygonCeiling) {
+        geometry.dispose();
+        const subSegs = Math.max(4, complexity * 2);
+        geometry = new THREE.PlaneGeometry(width, depth, subSegs, subSegs);
+        this.applyUVMapping(geometry, width, depth);
+      }
+
+      const posAttr = geometry.getAttribute('position');
+      if (posAttr) {
+        const ceilingRng = new SeededRandom(seed + 6000);
+        const maxDisplace = height * ceilingVariance;
+        for (let i = 0; i < posAttr.count; i++) {
+          // PlaneGeometry lies in XY, Z is normal. After rotation x=PI/2, local Z becomes world Y.
+          // Displace in Z (local) which becomes Y (world) — pushing ceiling sections down
+          const x = posAttr.getX(i);
+          const y = posAttr.getY(i);
+          // Use smooth noise-like displacement based on position
+          const noiseVal = Math.sin(x * 0.5 + ceilingRng.next() * 3) *
+                          Math.cos(y * 0.5 + ceilingRng.next() * 3);
+          const displacement = noiseVal * maxDisplace;
+          posAttr.setZ(i, displacement);
+        }
+        posAttr.needsUpdate = true;
+        geometry.computeVertexNormals();
+      }
+    }
 
     const mesh = new THREE.Mesh(geometry, material);
     mesh.rotation.x = Math.PI / 2;
@@ -924,7 +1536,34 @@ export class RoomGenerator {
       abnormality,
     };
 
-    return createLiminalMaterial(materialConfig);
+    const material = createLiminalMaterial(materialConfig);
+
+    // Apply archetype-specific color tinting to wall material
+    this.applyArchetypeAtmosphere(material, config.archetype);
+
+    return material;
+  }
+
+  /**
+   * Apply archetype-specific atmosphere colors to a shader material.
+   * Shifts gradient and primary colors to evoke the archetype's mood.
+   */
+  private applyArchetypeAtmosphere(material: THREE.ShaderMaterial, archetype?: RoomArchetype): void {
+    if (!archetype) return;
+
+    const atmosphere = ARCHETYPE_ATMOSPHERES[archetype];
+    if (!atmosphere) return;
+
+    const uniforms = material.uniforms;
+    if (uniforms.u_colorGradientStart) {
+      uniforms.u_colorGradientStart.value.copy(atmosphere.gradientStart);
+    }
+    if (uniforms.u_colorGradientEnd) {
+      uniforms.u_colorGradientEnd.value.copy(atmosphere.gradientEnd);
+    }
+    if (uniforms.u_colorPrimary) {
+      uniforms.u_colorPrimary.value.copy(atmosphere.primary);
+    }
   }
 
   private createFloorMaterial(floorType: FloorType, abnormality: number, config: RoomConfig): THREE.Material {
@@ -952,6 +1591,9 @@ export class RoomGenerator {
     };
 
     const material = createLiminalMaterial(materialConfig);
+
+    // Apply archetype-specific color tinting to floor material
+    this.applyArchetypeAtmosphere(material, config.archetype);
 
     // Special handling for void floors
     if (floorType === FloorType.VOID) {

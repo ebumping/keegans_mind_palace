@@ -27,6 +27,9 @@ uniform int u_glitchType;
 uniform float u_glitchTime;
 uniform float u_screenTearOffset;
 uniform vec2 u_rgbSplitOffset;
+uniform float u_growlIntensity;
+uniform float u_transientIntensity;
+uniform float u_pixelDissolve;
 uniform vec2 u_resolution;
 
 // Pseudo-random function
@@ -84,19 +87,36 @@ vec4 screenTear(vec2 uv, float intensity) {
   return color;
 }
 
-// RGB split effect
+// RGB split effect — intensity scales with transient + Growl
 vec4 rgbSplit(vec2 uv, float intensity) {
+  // Base offset from system (already incorporates transient + Growl scaling)
   vec2 offset = u_rgbSplitOffset;
   if (length(offset) < 0.0001) {
     offset = vec2(intensity * 0.02, 0.0);
   }
 
-  float wobble = sin(u_glitchTime * 20.0) * intensity * 0.003;
+  // Additional shader-side scaling: transient punches harder, Growl widens
+  float transientBoost = u_transientIntensity * intensity * 0.012;
+  float growlBoost = u_growlIntensity * intensity * 0.008;
+  offset *= (1.0 + transientBoost + growlBoost);
+
+  // Time-based wobble with Growl-driven oscillation speed
+  float wobbleSpeed = 20.0 + u_growlIntensity * 30.0;
+  float wobble = sin(u_glitchTime * wobbleSpeed) * intensity * 0.003;
   offset += vec2(wobble, -wobble * 0.5);
 
+  // Asymmetric channel offsets — red shifts one way, blue the other
   float r = texture2D(inputBuffer, uv + offset).r;
   float g = texture2D(inputBuffer, uv).g;
   float b = texture2D(inputBuffer, uv - offset).b;
+
+  // At high Growl, add secondary diagonal split for extra chaos
+  if (u_growlIntensity > 0.5) {
+    float diag = (u_growlIntensity - 0.5) * 2.0 * intensity * 0.006;
+    vec2 diagOffset = vec2(diag, diag * 0.7);
+    r = mix(r, texture2D(inputBuffer, uv + diagOffset).r, 0.3);
+    b = mix(b, texture2D(inputBuffer, uv - diagOffset).b, 0.3);
+  }
 
   return vec4(r, g, b, 1.0);
 }
@@ -166,32 +186,120 @@ vec4 uvDistortion(vec2 uv, float intensity) {
   return texture2D(inputBuffer, distorted);
 }
 
-// Reality break effect
+// Pixel dissolve effect — posterize + dither at high Growl
+vec4 pixelDissolve(vec2 uv, float intensity) {
+  vec4 color = texture2D(inputBuffer, uv);
+
+  // Posterize: reduce color levels based on intensity
+  // At full dissolve, reduce to ~4 levels per channel
+  float levels = mix(256.0, 4.0, intensity);
+  color.rgb = floor(color.rgb * levels + 0.5) / levels;
+
+  // Ordered dithering (Bayer 4x4 pattern)
+  float bayerMatrix[16];
+  bayerMatrix[0]  =  0.0/16.0; bayerMatrix[1]  =  8.0/16.0;
+  bayerMatrix[2]  =  2.0/16.0; bayerMatrix[3]  = 10.0/16.0;
+  bayerMatrix[4]  = 12.0/16.0; bayerMatrix[5]  =  4.0/16.0;
+  bayerMatrix[6]  = 14.0/16.0; bayerMatrix[7]  =  6.0/16.0;
+  bayerMatrix[8]  =  3.0/16.0; bayerMatrix[9]  = 11.0/16.0;
+  bayerMatrix[10] =  1.0/16.0; bayerMatrix[11] =  9.0/16.0;
+  bayerMatrix[12] = 15.0/16.0; bayerMatrix[13] =  7.0/16.0;
+  bayerMatrix[14] = 13.0/16.0; bayerMatrix[15] =  5.0/16.0;
+
+  vec2 pixelPos = floor(uv * u_resolution);
+  int bx = int(mod(pixelPos.x, 4.0));
+  int by = int(mod(pixelPos.y, 4.0));
+  int idx = by * 4 + bx;
+
+  // Access bayer value (unrolled for GLSL compatibility)
+  float bayerValue = 0.0;
+  for (int i = 0; i < 16; i++) {
+    if (i == idx) {
+      bayerValue = bayerMatrix[i];
+      break;
+    }
+  }
+
+  // Apply dither: dissolve pixels based on threshold
+  float dissolveThreshold = intensity * 0.8;
+  float ditherFactor = bayerValue;
+
+  // Pixels below threshold dissolve to near-black with noise
+  if (ditherFactor < dissolveThreshold) {
+    float noiseFactor = random(uv + u_glitchTime * 0.1);
+    color.rgb = mix(color.rgb, vec3(noiseFactor * 0.1), intensity * 0.7);
+  }
+
+  // Add scan line artifacts at higher intensities
+  float scanY = mod(pixelPos.y, 3.0);
+  if (scanY < 1.0 && intensity > 0.5) {
+    color.rgb *= 0.85;
+  }
+
+  return color;
+}
+
+// Reality break effect — full chaos at Growl > 0.8
 vec4 realityBreak(vec2 uv, float intensity) {
   vec4 color = vec4(0.0);
 
-  color += screenTear(uv, intensity * 0.6) * 0.30;
-  color += rgbSplit(uv, intensity * 0.8) * 0.35;
-  color += uvDistortion(uv, intensity * 0.5) * 0.25;
+  // Layer all effects with Growl-boosted weights
+  float growlFactor = u_growlIntensity;
+  color += screenTear(uv, intensity * 0.6) * 0.25;
+  color += rgbSplit(uv, intensity * 0.8) * 0.30;
+  color += uvDistortion(uv, intensity * 0.5) * 0.20;
   color += geometryJitter(uv, intensity * 0.4) * 0.10;
 
-  float swapTime = sin(u_glitchTime * 15.0);
+  // Add pixel dissolve layer when Growl is significant
+  if (growlFactor > 0.3) {
+    float dissolveIntensity = (growlFactor - 0.3) / 0.7 * intensity;
+    color += pixelDissolve(uv, dissolveIntensity) * 0.15;
+  } else {
+    color += texture2D(inputBuffer, uv) * 0.15;
+  }
+
+  // Channel swap based on time — more aggressive at high Growl
+  float swapSpeed = 15.0 + growlFactor * 20.0;
+  float swapTime = sin(u_glitchTime * swapSpeed);
   if (swapTime > 0.7) {
     color.rgb = color.gbr;
   } else if (swapTime < -0.7) {
     color.rgb = color.brg;
   }
 
+  // Static noise overlay — scales with Growl
   float staticNoise = random(uv * u_resolution + u_glitchTime * 100.0);
-  color.rgb = mix(color.rgb, vec3(staticNoise), intensity * 0.15);
+  color.rgb = mix(color.rgb, vec3(staticNoise), intensity * (0.15 + growlFactor * 0.1));
 
+  // Full-screen inversion at Growl > 0.8 — periodic flashes
+  if (growlFactor > 0.8) {
+    float invPulse = sin(u_glitchTime * 8.0) * 0.5 + 0.5;
+    float invStrength = (growlFactor - 0.8) * 5.0 * intensity * invPulse;
+    color.rgb = mix(color.rgb, 1.0 - color.rgb, clamp(invStrength, 0.0, 0.9));
+  }
+
+  // Transient-triggered inversion flash
   float invFlash = step(0.98, sin(u_glitchTime * 25.0));
   color.rgb = mix(color.rgb, 1.0 - color.rgb, invFlash * intensity * 0.6);
 
+  // Distortion: warp UVs from center at extreme Growl
+  if (growlFactor > 0.7) {
+    vec2 center = uv - 0.5;
+    float dist = length(center);
+    float warpStr = (growlFactor - 0.7) * 3.3 * intensity;
+    float warp = sin(dist * 20.0 - u_glitchTime * 5.0) * warpStr * 0.02;
+    vec2 warpedUV = uv + normalize(center + 0.001) * warp;
+    vec4 warpColor = texture2D(inputBuffer, clamp(warpedUV, 0.0, 1.0));
+    color.rgb = mix(color.rgb, warpColor.rgb, 0.3);
+  }
+
+  // Vignette darkening at edges
   float vignette = 1.0 - length((uv - 0.5) * 2.0) * intensity * 0.3;
   color.rgb *= max(vignette, 0.3);
 
-  float blackout = step(0.995, random(vec2(floor(u_glitchTime * 60.0), 0.5)));
+  // Occasional blackout frames — more frequent at high Growl
+  float blackoutThreshold = 0.995 - growlFactor * 0.01;
+  float blackout = step(blackoutThreshold, random(vec2(floor(u_glitchTime * 60.0), 0.5)));
   color.rgb *= 1.0 - blackout * 0.8;
 
   color.a = 1.0;
@@ -199,9 +307,14 @@ vec4 realityBreak(vec2 uv, float intensity) {
 }
 
 void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor) {
-  // No glitch - passthrough
+  // No glitch - but still apply ambient pixel dissolve at high Growl
   if (u_glitchIntensity < 0.001 || u_glitchType < 0) {
-    outputColor = inputColor;
+    // Ambient pixel dissolve when Growl is high even without active glitch
+    if (u_pixelDissolve > 0.01) {
+      outputColor = pixelDissolve(uv, u_pixelDissolve * 0.3);
+    } else {
+      outputColor = inputColor;
+    }
     return;
   }
 
@@ -221,6 +334,12 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor)
   } else {
     outputColor = inputColor;
   }
+
+  // Layer pixel dissolve on top of any active glitch when Growl is high
+  if (u_pixelDissolve > 0.1 && u_glitchType != 5) {
+    vec4 dissolved = pixelDissolve(uv, u_pixelDissolve);
+    outputColor = mix(outputColor, dissolved, u_pixelDissolve * 0.4);
+  }
 }
 `;
 
@@ -238,6 +357,9 @@ class GlitchEffectImpl extends Effect {
     uniformsMap.set('u_glitchTime', new THREE.Uniform(0));
     uniformsMap.set('u_screenTearOffset', new THREE.Uniform(0));
     uniformsMap.set('u_rgbSplitOffset', new THREE.Uniform(new THREE.Vector2(0, 0)));
+    uniformsMap.set('u_growlIntensity', new THREE.Uniform(0));
+    uniformsMap.set('u_transientIntensity', new THREE.Uniform(0));
+    uniformsMap.set('u_pixelDissolve', new THREE.Uniform(0));
     uniformsMap.set('u_resolution', new THREE.Uniform(new THREE.Vector2(window.innerWidth, window.innerHeight)));
 
     super('GlitchEffect', glitchFragmentShader, {
@@ -262,6 +384,9 @@ class GlitchEffectImpl extends Effect {
     this.uniforms.get('u_glitchTime')!.value = uniforms.u_glitchTime.value;
     this.uniforms.get('u_screenTearOffset')!.value = uniforms.u_screenTearOffset.value;
     this.uniforms.get('u_rgbSplitOffset')!.value = uniforms.u_rgbSplitOffset.value;
+    this.uniforms.get('u_growlIntensity')!.value = uniforms.u_growlIntensity.value;
+    this.uniforms.get('u_transientIntensity')!.value = uniforms.u_transientIntensity.value;
+    this.uniforms.get('u_pixelDissolve')!.value = uniforms.u_pixelDissolve.value;
     this.uniforms.get('u_resolution')!.value = uniforms.u_resolution.value;
   }
 

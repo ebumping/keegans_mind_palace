@@ -70,6 +70,10 @@ const DEFAULT_UNIFORMS = {
   u_rippleFrequency: 3.0,
   u_rippleIntensity: 0.5,
 
+  // Glitch
+  u_geometryGlitch: 0,
+  u_glitchTime: 0,
+
   // Resolution
   u_resolution: new THREE.Vector2(window.innerWidth, window.innerHeight),
 };
@@ -113,6 +117,10 @@ export function createLiminalUniforms(config: LiminalMaterialConfig): Record<str
     u_breatheIntensity: { value: config.breatheIntensity ?? DEFAULT_UNIFORMS.u_breatheIntensity },
     u_rippleFrequency: { value: config.rippleFrequency ?? DEFAULT_UNIFORMS.u_rippleFrequency },
     u_rippleIntensity: { value: config.rippleIntensity ?? DEFAULT_UNIFORMS.u_rippleIntensity },
+
+    // Glitch (consumed by vertex shader for geometry distortion)
+    u_geometryGlitch: { value: DEFAULT_UNIFORMS.u_geometryGlitch },
+    u_glitchTime: { value: DEFAULT_UNIFORMS.u_glitchTime },
 
     // Resolution
     u_resolution: { value: DEFAULT_UNIFORMS.u_resolution.clone() },

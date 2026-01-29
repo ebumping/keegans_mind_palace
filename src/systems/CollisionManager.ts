@@ -247,32 +247,128 @@ export class CollisionManager {
     const { width, height, depth } = config.dimensions;
     const wallThickness = 0.3;
 
-    // Create wall colliders from polygon edges (works for both rectangular and non-rectangular)
-    if (this.roomPolygon && this.roomPolygon.length >= 3) {
-      const vertices = this.roomPolygon;
-      const centroid = this.roomPolygonCentroid;
+    // Helper: get doorways on a specific wall
+    const doorwaysOnWall = (wall: Wall): DoorwayPlacement[] =>
+      config.doorways.filter(d => d.wall === wall);
 
-      for (let i = 0; i < vertices.length; i++) {
-        const v1 = vertices[i];
-        const v2 = vertices[(i + 1) % vertices.length];
+    // Helper: create wall segments with gaps for doorways
+    // For north/south walls, the wall runs along X axis
+    // For east/west walls, the wall runs along Z axis
+    const createSegmentedWall = (
+      wall: Wall,
+      wallMin: THREE.Vector3,
+      wallMax: THREE.Vector3,
+      axis: 'x' | 'z'
+    ): void => {
+      const doorways = doorwaysOnWall(wall);
 
-        // Edge direction
-        const edgeDx = v2.x - v1.x;
-        const edgeDy = v2.y - v1.y;
-        const edgeLen = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy);
-        if (edgeLen < 0.001) continue;
+      if (doorways.length === 0) {
+        // No doorways - single solid wall
+        this.addStaticCollider(`wall_${wall}`, new THREE.Box3(wallMin, wallMax));
+        return;
+      }
 
-        // Outward normal (perpendicular to edge, pointing away from centroid)
-        let nx = edgeDy / edgeLen;
-        let nz = -edgeDx / edgeLen;
-        const midX = (v1.x + v2.x) / 2;
-        const midZ = (v1.y + v2.y) / 2;
-        const toCentroidX = centroid.x - midX;
-        const toCentroidZ = centroid.y - midZ;
-        if (nx * toCentroidX + nz * toCentroidZ > 0) {
-          nx = -nx;
-          nz = -nz;
+      // Sort doorways by position along the wall axis
+      const gaps: { start: number; end: number }[] = [];
+      for (const doorway of doorways) {
+        const doorwayPos = this.getDoorwayWorldPosition(doorway, config.dimensions);
+        const halfDoorWidth = doorway.width / 2;
+        const center = axis === 'x' ? doorwayPos.x : doorwayPos.z;
+        gaps.push({ start: center - halfDoorWidth, end: center + halfDoorWidth });
+      }
+      gaps.sort((a, b) => a.start - b.start);
+
+      // Build wall segments around the gaps
+      const wallStart = axis === 'x' ? wallMin.x : wallMin.z;
+      const wallEnd = axis === 'x' ? wallMax.x : wallMax.z;
+
+      let cursor = wallStart;
+      let segIndex = 0;
+
+      for (const gap of gaps) {
+        // Segment before this gap
+        if (cursor < gap.start) {
+          const segMin = wallMin.clone();
+          const segMax = wallMax.clone();
+          if (axis === 'x') {
+            segMin.x = cursor;
+            segMax.x = gap.start;
+          } else {
+            segMin.z = cursor;
+            segMax.z = gap.start;
+          }
+          this.addStaticCollider(`wall_${wall}_seg${segIndex++}`, new THREE.Box3(segMin, segMax));
         }
+
+        // Add lintel above doorway opening (wall above the door)
+        const doorway = doorways.find(d => {
+          const pos = this.getDoorwayWorldPosition(d, config.dimensions);
+          const center = axis === 'x' ? pos.x : pos.z;
+          return Math.abs(center - (gap.start + gap.end) / 2) < 0.01;
+        });
+        if (doorway && doorway.height < height) {
+          const lintelMin = wallMin.clone();
+          const lintelMax = wallMax.clone();
+          if (axis === 'x') {
+            lintelMin.x = gap.start;
+            lintelMax.x = gap.end;
+          } else {
+            lintelMin.z = gap.start;
+            lintelMax.z = gap.end;
+          }
+          lintelMin.y = doorway.height;
+          this.addStaticCollider(`wall_${wall}_lintel${segIndex}`, new THREE.Box3(lintelMin, lintelMax));
+        }
+
+        cursor = gap.end;
+      }
+
+      // Segment after last gap
+      if (cursor < wallEnd) {
+        const segMin = wallMin.clone();
+        const segMax = wallMax.clone();
+        if (axis === 'x') {
+          segMin.x = cursor;
+          segMax.x = wallEnd;
+        } else {
+          segMin.z = cursor;
+          segMax.z = wallEnd;
+        }
+        this.addStaticCollider(`wall_${wall}_seg${segIndex}`, new THREE.Box3(segMin, segMax));
+      }
+    };
+
+    // North wall (negative Z) - runs along X axis
+    createSegmentedWall(
+      'north',
+      new THREE.Vector3(-width / 2 - wallThickness, 0, -depth / 2 - wallThickness),
+      new THREE.Vector3(width / 2 + wallThickness, height, -depth / 2),
+      'x'
+    );
+
+    // South wall (positive Z) - runs along X axis
+    createSegmentedWall(
+      'south',
+      new THREE.Vector3(-width / 2 - wallThickness, 0, depth / 2),
+      new THREE.Vector3(width / 2 + wallThickness, height, depth / 2 + wallThickness),
+      'x'
+    );
+
+    // East wall (positive X) - runs along Z axis
+    createSegmentedWall(
+      'east',
+      new THREE.Vector3(width / 2, 0, -depth / 2),
+      new THREE.Vector3(width / 2 + wallThickness, height, depth / 2),
+      'z'
+    );
+
+    // West wall (negative X) - runs along Z axis
+    createSegmentedWall(
+      'west',
+      new THREE.Vector3(-width / 2 - wallThickness, 0, -depth / 2),
+      new THREE.Vector3(-width / 2, height, depth / 2),
+      'z'
+    );
 
         // Create a thin oriented box along this edge
         // The box extends wallThickness outward from the edge

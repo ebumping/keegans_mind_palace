@@ -23,6 +23,9 @@ uniform float u_glitchTime;       // Accumulated time for animation
 // Effect-specific uniforms
 uniform float u_screenTearOffset; // Y position of tear (0-1)
 uniform vec2 u_rgbSplitOffset;    // Direction and magnitude of RGB split
+uniform float u_growlIntensity;   // Current Growl (time-based dread) level
+uniform float u_transientIntensity; // Current audio transient intensity
+uniform float u_pixelDissolve;    // Pixel dissolve amount (high Growl)
 
 // Display uniforms
 uniform vec2 u_resolution;
@@ -108,23 +111,34 @@ vec3 screenTear(vec2 uv, float intensity) {
 
 /**
  * RGB channel separation effect.
- * Separates color channels with audio-reactive offset.
+ * Intensity scales with transient + Growl for proportional response.
  */
 vec3 rgbSplit(vec2 uv, float intensity) {
-  // Use provided offset direction or default to horizontal
   vec2 offset = u_rgbSplitOffset;
   if (length(offset) < 0.0001) {
     offset = vec2(intensity * 0.02, 0.0);
   }
 
-  // Add time-based wobble
-  float wobble = sin(u_glitchTime * 20.0) * intensity * 0.003;
+  // Scale with transient + Growl
+  float transientBoost = u_transientIntensity * intensity * 0.012;
+  float growlBoost = u_growlIntensity * intensity * 0.008;
+  offset *= (1.0 + transientBoost + growlBoost);
+
+  float wobbleSpeed = 20.0 + u_growlIntensity * 30.0;
+  float wobble = sin(u_glitchTime * wobbleSpeed) * intensity * 0.003;
   offset += vec2(wobble, -wobble * 0.5);
 
-  // Sample each channel at different positions
   float r = texture2D(u_sceneTexture, uv + offset).r;
   float g = texture2D(u_sceneTexture, uv).g;
   float b = texture2D(u_sceneTexture, uv - offset).b;
+
+  // Diagonal split at high Growl
+  if (u_growlIntensity > 0.5) {
+    float diag = (u_growlIntensity - 0.5) * 2.0 * intensity * 0.006;
+    vec2 diagOffset = vec2(diag, diag * 0.7);
+    r = mix(r, texture2D(u_sceneTexture, uv + diagOffset).r, 0.3);
+    b = mix(b, texture2D(u_sceneTexture, uv - diagOffset).b, 0.3);
+  }
 
   return vec3(r, g, b);
 }
@@ -218,49 +232,122 @@ vec3 uvDistortion(vec2 uv, float intensity) {
   return texture2D(u_sceneTexture, distorted).rgb;
 }
 
+// ===== Effect: Pixel Dissolve =====
+
+/**
+ * Posterize + dither dissolve effect.
+ * Active at high Growl intensity for digital decay aesthetic.
+ */
+vec3 pixelDissolve(vec2 uv, float intensity) {
+  vec3 color = texture2D(u_sceneTexture, uv).rgb;
+
+  // Posterize: reduce color levels
+  float levels = mix(256.0, 4.0, intensity);
+  color = floor(color * levels + 0.5) / levels;
+
+  // Bayer 4x4 dithering
+  float bayerMatrix[16];
+  bayerMatrix[0]  =  0.0/16.0; bayerMatrix[1]  =  8.0/16.0;
+  bayerMatrix[2]  =  2.0/16.0; bayerMatrix[3]  = 10.0/16.0;
+  bayerMatrix[4]  = 12.0/16.0; bayerMatrix[5]  =  4.0/16.0;
+  bayerMatrix[6]  = 14.0/16.0; bayerMatrix[7]  =  6.0/16.0;
+  bayerMatrix[8]  =  3.0/16.0; bayerMatrix[9]  = 11.0/16.0;
+  bayerMatrix[10] =  1.0/16.0; bayerMatrix[11] =  9.0/16.0;
+  bayerMatrix[12] = 15.0/16.0; bayerMatrix[13] =  7.0/16.0;
+  bayerMatrix[14] = 13.0/16.0; bayerMatrix[15] =  5.0/16.0;
+
+  vec2 pixelPos = floor(uv * u_resolution);
+  int bx = int(mod(pixelPos.x, 4.0));
+  int by = int(mod(pixelPos.y, 4.0));
+  int idx = by * 4 + bx;
+
+  float bayerValue = 0.0;
+  for (int i = 0; i < 16; i++) {
+    if (i == idx) {
+      bayerValue = bayerMatrix[i];
+      break;
+    }
+  }
+
+  float dissolveThreshold = intensity * 0.8;
+  if (bayerValue < dissolveThreshold) {
+    float noiseFactor = random(uv + u_glitchTime * 0.1);
+    color = mix(color, vec3(noiseFactor * 0.1), intensity * 0.7);
+  }
+
+  float scanY = mod(pixelPos.y, 3.0);
+  if (scanY < 1.0 && intensity > 0.5) {
+    color *= 0.85;
+  }
+
+  return color;
+}
+
 // ===== Effect 5: Reality Break =====
 
 /**
  * Extreme glitch effect combining multiple techniques.
- * Used for high-intensity "reality breakdown" moments.
+ * Full-screen inversion/distortion gated on Growl > 0.8.
  */
 vec3 realityBreak(vec2 uv, float intensity) {
   vec3 color = vec3(0.0);
+  float growlFactor = u_growlIntensity;
 
-  // Layer 1: Screen tear (30%)
-  color += screenTear(uv, intensity * 0.6) * 0.30;
-
-  // Layer 2: RGB split (35%)
-  color += rgbSplit(uv, intensity * 0.8) * 0.35;
-
-  // Layer 3: UV distortion (25%)
-  color += uvDistortion(uv, intensity * 0.5) * 0.25;
-
-  // Layer 4: Jitter overlay (10%)
+  color += screenTear(uv, intensity * 0.6) * 0.25;
+  color += rgbSplit(uv, intensity * 0.8) * 0.30;
+  color += uvDistortion(uv, intensity * 0.5) * 0.20;
   color += geometryJitter(uv, intensity * 0.4) * 0.10;
 
-  // Color channel swap based on time
-  float swapTime = sin(u_glitchTime * 15.0);
+  // Pixel dissolve layer
+  if (growlFactor > 0.3) {
+    float dissolveIntensity = (growlFactor - 0.3) / 0.7 * intensity;
+    color += pixelDissolve(uv, dissolveIntensity) * 0.15;
+  } else {
+    color += texture2D(u_sceneTexture, uv).rgb * 0.15;
+  }
+
+  // Channel swap — more aggressive at high Growl
+  float swapSpeed = 15.0 + growlFactor * 20.0;
+  float swapTime = sin(u_glitchTime * swapSpeed);
   if (swapTime > 0.7) {
     color = color.gbr;
   } else if (swapTime < -0.7) {
     color = color.brg;
   }
 
-  // Static noise overlay
+  // Static noise
   float staticNoise = random(uv * u_resolution + u_glitchTime * 100.0);
-  color = mix(color, vec3(staticNoise), intensity * 0.15);
+  color = mix(color, vec3(staticNoise), intensity * (0.15 + growlFactor * 0.1));
 
-  // Occasional color inversion flash
+  // Full-screen inversion at Growl > 0.8
+  if (growlFactor > 0.8) {
+    float invPulse = sin(u_glitchTime * 8.0) * 0.5 + 0.5;
+    float invStrength = (growlFactor - 0.8) * 5.0 * intensity * invPulse;
+    color = mix(color, 1.0 - color, clamp(invStrength, 0.0, 0.9));
+  }
+
+  // Transient flash
   float invFlash = step(0.98, sin(u_glitchTime * 25.0));
   color = mix(color, 1.0 - color, invFlash * intensity * 0.6);
 
-  // Vignette darkening at edges
+  // Center-warp distortion at extreme Growl
+  if (growlFactor > 0.7) {
+    vec2 center = uv - 0.5;
+    float dist = length(center);
+    float warpStr = (growlFactor - 0.7) * 3.3 * intensity;
+    float warp = sin(dist * 20.0 - u_glitchTime * 5.0) * warpStr * 0.02;
+    vec2 warpedUV = uv + normalize(center + 0.001) * warp;
+    vec3 warpColor = texture2D(u_sceneTexture, clamp(warpedUV, 0.0, 1.0)).rgb;
+    color = mix(color, warpColor, 0.3);
+  }
+
+  // Vignette
   float vignette = 1.0 - length((uv - 0.5) * 2.0) * intensity * 0.3;
   color *= max(vignette, 0.3);
 
-  // Occasional blackout frames
-  float blackout = step(0.995, random(vec2(floor(u_glitchTime * 60.0), 0.5)));
+  // Blackout frames
+  float blackoutThreshold = 0.995 - growlFactor * 0.01;
+  float blackout = step(blackoutThreshold, random(vec2(floor(u_glitchTime * 60.0), 0.5)));
   color *= 1.0 - blackout * 0.8;
 
   return color;

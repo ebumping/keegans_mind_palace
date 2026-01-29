@@ -118,7 +118,7 @@ export interface AudioLevelsInput {
   mid: number;
   high: number;
   transient: boolean;
-  transientIntensity?: number; // 0-1 for more nuanced response
+  transientIntensity: number; // 0-1 intensity of current transient
 }
 
 export interface MovementModifiers {
@@ -296,7 +296,7 @@ export function updateMovement(
     .addScaledVector(_right, state.strafe * strafeSpeed);
 
   // Audio-movement binding: transient causes micro-stumble
-  if (audioLevels && modifiers && audioLevels.transient) {
+  if (audioLevels && modifiers && audioLevels.transientIntensity > 0.3) {
     if (modifiers.transientCooldownTimer <= 0) {
       // Reduce velocity on transient
       state.velocity.multiplyScalar(0.85);
@@ -377,23 +377,17 @@ export function updateMovement(
       state.velocity.add(fullResult.pushVector.clone().multiplyScalar(0.5));
     }
 
-    // Safety clamp: ensure player stays within room polygon bounds
-    // Uses polygon containment for non-rectangular rooms, AABB for rectangular
-    const clamped = collisionManager.clampToRoom(
-      state.position.x,
-      state.position.z,
-      config.playerRadius
-    );
-    state.position.x = clamped.x;
-    state.position.z = clamped.z;
+    // Safety clamp: ensure player stays within room bounds
+    // But allow passage through doorways by not clamping near door openings
+    const halfWidth = roomConfig.dimensions.width / 2 - config.playerRadius;
+    const halfDepth = roomConfig.dimensions.depth / 2 - config.playerRadius;
 
-    // Hard safety boundary: if player escaped to outside polygon + 1 unit margin,
-    // teleport them back to room center. This is the last-resort failsafe.
-    if (!collisionManager.isInsideRoom(state.position.x, state.position.z)) {
-      const centroid = collisionManager.getRoomPolygonCentroid();
-      state.position.x = centroid.x;
-      state.position.z = centroid.y;
-      state.velocity.set(0, 0, 0);
+    // Check if the player is currently in a doorway trigger zone
+    const inDoorwayZone = collisionManager.isInDoorway(state.position, config.playerRadius);
+
+    if (!inDoorwayZone) {
+      state.position.x = THREE.MathUtils.clamp(state.position.x, -halfWidth, halfWidth);
+      state.position.z = THREE.MathUtils.clamp(state.position.z, -halfDepth, halfDepth);
     }
   } else {
     // No room config - allow free movement (fallback to legacy)
@@ -410,6 +404,33 @@ export function updateMovement(
       state.velocity.projectOnPlane(collisionResult.normal);
     } else {
       state.position.copy(_newPosition);
+    }
+  }
+
+  // Subtle doorway pull — gently guide player toward doorway center when close
+  if (roomConfig && state.isMoving) {
+    const pullStrength = 0.3; // Very subtle
+    const pullRange = 3.0;
+
+    for (const doorway of roomConfig.doorways) {
+      const doorwayPos = getDoorwayWorldPosition(doorway, roomConfig.dimensions);
+      const dx = doorwayPos.x - state.position.x;
+      const dz = doorwayPos.z - state.position.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+
+      if (dist < pullRange && dist > 0.5) {
+        // Only pull if player is moving roughly toward the doorway
+        const toDoor = new THREE.Vector3(dx, 0, dz).normalize();
+        const velDir = state.velocity.clone().setY(0).normalize();
+        const alignment = velDir.dot(toDoor);
+
+        if (alignment > 0.3) {
+          const proximity = 1 - dist / pullRange;
+          const pull = proximity * proximity * pullStrength * delta;
+          state.position.x += toDoor.x * pull;
+          state.position.z += toDoor.z * pull;
+        }
+      }
     }
   }
 
@@ -584,9 +605,9 @@ export function checkTransitionTrigger(
         .setY(0)
         .normalize();
 
-      // Check if moving towards doorway
+      // Check if moving towards doorway (relaxed threshold for easier triggering)
       const velocityDir = state.velocity.clone().setY(0).normalize();
-      const movingTowards = velocityDir.dot(towardsDoorway) > 0.3;
+      const movingTowards = velocityDir.dot(towardsDoorway) > 0.1;
 
       if (movingTowards && state.isMoving) {
         // Calculate progress through doorway
@@ -692,7 +713,7 @@ export function updateCameraEffects(
   effects.swayOffset.y = THREE.MathUtils.lerp(effects.swayOffset.y, targetSwayY, delta * 5);
 
   // FOV pulse on bass hits
-  const targetFovOffset = audioLevels.transient ? 5 : audioLevels.bass * 2;
+  const targetFovOffset = audioLevels.transientIntensity * 5 + audioLevels.bass * 2;
   effects.fovOffset = THREE.MathUtils.lerp(effects.fovOffset, targetFovOffset, delta * 10);
 
   // Transient stumble - camera roll jolt
@@ -737,6 +758,89 @@ export function applyCameraEffects(
     pitch: basePitch + effects.swayOffset.y + effects.driftOffset.y,
     roll: effects.rollOffset,
   };
+}
+
+// ============================================
+// Touch Input Manager (for mobile controls)
+// ============================================
+
+export interface TouchInputState {
+  // Movement joystick (-1 to 1)
+  moveX: number;
+  moveY: number;
+  // Look delta (accumulated per frame)
+  lookDeltaX: number;
+  lookDeltaY: number;
+  // Sprint button
+  sprint: boolean;
+  // Active state
+  isActive: boolean;
+}
+
+export function createTouchInputState(): TouchInputState {
+  return {
+    moveX: 0,
+    moveY: 0,
+    lookDeltaX: 0,
+    lookDeltaY: 0,
+    sprint: false,
+    isActive: false,
+  };
+}
+
+export class TouchInputManager {
+  private state: TouchInputState;
+
+  constructor() {
+    this.state = createTouchInputState();
+  }
+
+  setMovement(x: number, y: number): void {
+    this.state.moveX = THREE.MathUtils.clamp(x, -1, 1);
+    this.state.moveY = THREE.MathUtils.clamp(y, -1, 1);
+    this.state.isActive = true;
+  }
+
+  addLookDelta(deltaX: number, deltaY: number): void {
+    this.state.lookDeltaX += deltaX;
+    this.state.lookDeltaY += deltaY;
+    this.state.isActive = true;
+  }
+
+  setSprint(sprinting: boolean): void {
+    this.state.sprint = sprinting;
+  }
+
+  getState(): TouchInputState {
+    return this.state;
+  }
+
+  resetLookDelta(): void {
+    this.state.lookDeltaX = 0;
+    this.state.lookDeltaY = 0;
+  }
+
+  reset(): void {
+    this.state.moveX = 0;
+    this.state.moveY = 0;
+    this.state.lookDeltaX = 0;
+    this.state.lookDeltaY = 0;
+    this.state.sprint = false;
+  }
+
+  isActive(): boolean {
+    return this.state.isActive;
+  }
+}
+
+// Singleton touch input manager for global access
+let touchInputManagerInstance: TouchInputManager | null = null;
+
+export function getTouchInputManager(): TouchInputManager {
+  if (!touchInputManagerInstance) {
+    touchInputManagerInstance = new TouchInputManager();
+  }
+  return touchInputManagerInstance;
 }
 
 // ============================================
@@ -938,6 +1042,13 @@ export class NavigationSystem {
   private roomConfig: RoomConfig | null = null;
   private onTransition: ((trigger: TransitionTrigger) => void) | null = null;
 
+  // Transition cooldown to prevent rapid re-triggering
+  private transitionCooldown: number = 0;
+  private static readonly TRANSITION_COOLDOWN_DURATION = 1.5; // seconds
+
+  // Doorway proximity tracking for visual feedback
+  private doorwayProximity: Map<number, number> = new Map(); // doorway index -> proximity 0-1
+
   constructor(config?: Partial<MovementConfig>) {
     this.config = { ...DEFAULT_MOVEMENT_CONFIG, ...config };
     this.movementState = createMovementState();
@@ -1007,12 +1118,45 @@ export class NavigationSystem {
   }
 
   update(delta: number, audioLevels?: AudioLevelsInput, time?: number): CollisionResult {
-    // Process input
+    // Process keyboard input
     processMovementInput(this.movementState, this.inputManager.getState());
     processLookInput(this.movementState, this.inputManager.getState(), this.config);
 
     // Reset mouse delta after processing
     this.inputManager.resetMouseDelta();
+
+    // Process touch input (overrides keyboard if active)
+    const touchInput = getTouchInputManager();
+    const touchState = touchInput.getState();
+    if (touchState.isActive) {
+      // Touch movement (joystick maps to forward/strafe)
+      if (Math.abs(touchState.moveX) > 0.01 || Math.abs(touchState.moveY) > 0.01) {
+        this.movementState.strafe = touchState.moveX;
+        this.movementState.forward = -touchState.moveY; // Invert Y for natural joystick feel
+      }
+
+      // Touch sprint
+      this.movementState.sprinting = touchState.sprint && this.movementState.forward > 0;
+
+      // Touch look (apply sensitivity and update yaw/pitch)
+      if (Math.abs(touchState.lookDeltaX) > 0.01 || Math.abs(touchState.lookDeltaY) > 0.01) {
+        const lookSensitivity = this.config.lookSensitivity * 0.5; // Slightly lower for touch
+        const yawDelta = -touchState.lookDeltaX * lookSensitivity;
+        const pitchDelta = -touchState.lookDeltaY * lookSensitivity;
+
+        this.movementState.yaw += yawDelta;
+
+        const maxPitchRad = this.config.maxPitch * THREE.MathUtils.DEG2RAD;
+        this.movementState.pitch = THREE.MathUtils.clamp(
+          this.movementState.pitch + pitchDelta,
+          -maxPitchRad,
+          maxPitchRad
+        );
+      }
+
+      // Reset touch look delta after processing
+      touchInput.resetLookDelta();
+    }
 
     // Update movement with audio-movement binding
     const collisionResult = updateMovement(
@@ -1036,10 +1180,21 @@ export class NavigationSystem {
       );
     }
 
-    // Check for transition triggers
-    const trigger = checkTransitionTrigger(this.movementState, this.roomConfig);
-    if (trigger && trigger.progress > 0.8) {
-      this.onTransition?.(trigger);
+    // Update transition cooldown
+    if (this.transitionCooldown > 0) {
+      this.transitionCooldown -= delta;
+    }
+
+    // Update doorway proximity tracking for visual feedback
+    this.updateDoorwayProximity();
+
+    // Check for transition triggers (only if cooldown expired)
+    if (this.transitionCooldown <= 0) {
+      const trigger = checkTransitionTrigger(this.movementState, this.roomConfig);
+      if (trigger && trigger.progress >= 0.6) {
+        this.transitionCooldown = NavigationSystem.TRANSITION_COOLDOWN_DURATION;
+        this.onTransition?.(trigger);
+      }
     }
 
     return collisionResult;
@@ -1068,6 +1223,46 @@ export class NavigationSystem {
       roll,
       fovOffset: this.cameraEffects.fovOffset,
     };
+  }
+
+  /**
+   * Reset transition cooldown (call after room change completes)
+   */
+  resetTransitionCooldown(): void {
+    this.transitionCooldown = NavigationSystem.TRANSITION_COOLDOWN_DURATION;
+  }
+
+  /**
+   * Get proximity values for all doorways in current room.
+   * Returns Map of doorway index -> proximity (0 = far, 1 = at threshold).
+   */
+  getDoorwayProximity(): Map<number, number> {
+    return this.doorwayProximity;
+  }
+
+  /**
+   * Update proximity tracking for each doorway in the current room.
+   */
+  private updateDoorwayProximity(): void {
+    this.doorwayProximity.clear();
+    if (!this.roomConfig) return;
+
+    const proximityRange = 4.0; // Start detecting from 4 units away
+
+    for (let i = 0; i < this.roomConfig.doorways.length; i++) {
+      const doorway = this.roomConfig.doorways[i];
+      const doorwayPos = getDoorwayWorldPosition(doorway, this.roomConfig.dimensions);
+
+      const dx = this.movementState.position.x - doorwayPos.x;
+      const dz = this.movementState.position.z - doorwayPos.z;
+      const distance = Math.sqrt(dx * dx + dz * dz);
+
+      if (distance < proximityRange) {
+        // 0 at edge of range, 1 at doorway
+        const proximity = 1 - distance / proximityRange;
+        this.doorwayProximity.set(i, proximity);
+      }
+    }
   }
 
   dispose(): void {
