@@ -7,7 +7,7 @@
  * - Demo mode (no capture)
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AudioCapture } from '../../core/AudioCapture';
 import { useAudioStore } from '../../store/audioStore';
 
@@ -106,8 +106,17 @@ export function AudioPermission({
     onCancelled?.();
   };
 
+  // Release pointer lock when the audio permission modal is visible
+  // so the user can interact with the modal buttons
+  const isModalVisible = permissionState !== 'granted' && !isCapturing;
+  useEffect(() => {
+    if (isModalVisible && document.pointerLockElement) {
+      document.exitPointerLock();
+    }
+  }, [isModalVisible]);
+
   // If already granted or capturing, don't render
-  if (permissionState === 'granted' || isCapturing) {
+  if (!isModalVisible) {
     return null;
   }
 

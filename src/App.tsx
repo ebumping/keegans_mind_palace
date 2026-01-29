@@ -473,8 +473,10 @@ function App() {
         />
       )}
 
-      {/* Pointer lock overlay with instructions */}
-      <PointerLockOverlay isTouchDevice={isTouchDevice} onEnter={handleMobileEnter} />
+      {/* Pointer lock overlay with instructions (only after audio permission granted) */}
+      {audioPermissionGranted && (
+        <PointerLockOverlay isTouchDevice={isTouchDevice} onEnter={handleMobileEnter} />
+      )}
 
       {/* Debug Overlay - unified debug panel system */}
       <DebugOverlay
