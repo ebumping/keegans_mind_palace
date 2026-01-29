@@ -77,28 +77,37 @@ const infiniteHallway: CuratedRoom = {
   name: 'The Infinite Hallway',
   archetype: RoomArchetype.CORRIDOR_OF_DOORS,
   shapeType: RoomShape.RECTANGLE,
-  dimensions: { width: 3, height: 4, depth: 40 },
-  floorVertices: rectVertices(3, 40),
-  wallSegments: wallsFromPolygon(rectVertices(3, 40), 4),
+  dimensions: { width: 3.5, height: 4.5, depth: 55 },
+  floorVertices: rectVertices(3.5, 55),
+  wallSegments: wallsFromPolygon(rectVertices(3.5, 55), 4.5),
   lightSources: [
-    // Pools of warm fluorescent light every 6m
-    ...Array.from({ length: 7 }, (_, i) => ({
-      position: { x: 0, y: 3.8, z: -18 + i * 6 },
+    // Pools of warm fluorescent light every 8m — gaps of darkness between
+    ...Array.from({ length: 5 }, (_, i) => ({
+      position: { x: 0, y: 3.8, z: -20 + i * 10 },
       color: '#fff5e0',
-      intensity: 0.8,
+      intensity: 0.7,
       type: 'rect' as const,
-      distance: 8,
-      decay: 1.5,
+      distance: 6,
+      decay: 2.0,
     })),
-    // Flickering light midway
+    // One light midway is a different color — subtly wrong
     {
-      position: { x: 0, y: 3.8, z: 0 },
-      color: '#fff5e0',
-      intensity: 1.2,
+      position: { x: 0, y: 3.8, z: 5 },
+      color: '#e0d0ff',
+      intensity: 1.0,
       type: 'point' as const,
       flicker: true,
-      distance: 6,
+      distance: 5,
       decay: 2,
+    },
+    // Faint glow at the far end — beckoning
+    {
+      position: { x: 0, y: 2.0, z: 25 },
+      color: '#88ccdd',
+      intensity: 0.4,
+      type: 'point' as const,
+      distance: 12,
+      decay: 1.0,
     },
   ],
   palette: {
@@ -111,41 +120,52 @@ const infiniteHallway: CuratedRoom = {
     wall: '#e8dcc8',
   },
   atmosphere: {
-    fogDensity: 0.04,
+    fogDensity: 0.045,
     fogColor: '#2a2520',
     particleType: 'dust',
-    particleCount: 30,
+    particleCount: 40,
     ambientSoundHint: 'fluorescent_hum',
   },
   furniture: [
-    // 12 identical doors (6 per side) - all decorative
-    ...Array.from({ length: 6 }, (_, i) => ({
+    // Doors on both sides — but spacing becomes irregular deeper in
+    ...Array.from({ length: 7 }, (_, i) => ({
       type: 'wooden_door',
-      position: { x: -1.45, y: 0, z: -15 + i * 5.5 },
+      position: { x: -1.45, y: 0, z: -20 + i * 5.5 + (i > 4 ? i * 0.8 : 0) },
       rotation: { x: 0, y: Math.PI / 2, z: 0 },
       scale: { x: 1, y: 1, z: 1 },
     })),
-    ...Array.from({ length: 6 }, (_, i) => ({
+    ...Array.from({ length: 7 }, (_, i) => ({
       type: 'wooden_door',
-      position: { x: 1.45, y: 0, z: -15 + i * 5.5 },
+      position: { x: 1.45, y: 0, z: -20 + i * 5.5 + (i > 4 ? i * 0.8 : 0) },
       rotation: { x: 0, y: -Math.PI / 2, z: 0 },
       scale: { x: 1, y: 1, z: 1 },
     })),
   ],
   doorways: [
+    // Far end — main progression
     {
-      position: { x: 0, y: 20 },
+      position: { x: 0, y: 25 },
       facingAngle: 0,
       width: 2.5,
       height: 3.5,
-      wallSegmentIndex: 2, // far end
+      wallSegmentIndex: 2,
       leadsTo: 2,
       glowColor: '#88ccdd',
+    },
+    // Side alcove halfway — hidden secondary path
+    {
+      position: { x: -1.75, y: 3 },
+      facingAngle: Math.PI / 2,
+      width: 2.0,
+      height: 3.0,
+      wallSegmentIndex: 3,
+      leadsTo: 3,
+      glowColor: '#443355',
     },
   ],
   floorType: FloorType.TILE,
   ceilingConfig: {
-    height: 4,
+    height: 4.5,
     hasLighting: true,
     lightingType: 'fluorescent',
     hasSkylight: false,
@@ -161,47 +181,51 @@ const emptyPool: CuratedRoom = {
   name: 'The Empty Pool',
   archetype: RoomArchetype.ATRIUM,
   shapeType: RoomShape.RECTANGLE,
-  dimensions: { width: 20, height: 8, depth: 30 },
-  floorVertices: rectVertices(20, 30),
-  wallSegments: wallsFromPolygon(rectVertices(20, 30), 8),
+  dimensions: { width: 24, height: 10, depth: 35 },
+  floorVertices: rectVertices(24, 35),
+  wallSegments: wallsFromPolygon(rectVertices(24, 35), 10),
   lightSources: [
-    // Skylight panels
-    { position: { x: -4, y: 7.8, z: -5 }, color: '#ddeeff', intensity: 0.6, type: 'rect' },
-    { position: { x: 4, y: 7.8, z: -5 }, color: '#ddeeff', intensity: 0.6, type: 'rect' },
-    { position: { x: -4, y: 7.8, z: 5 }, color: '#ddeeff', intensity: 0.6, type: 'rect' },
-    { position: { x: 4, y: 7.8, z: 5 }, color: '#ddeeff', intensity: 0.6, type: 'rect' },
-    // Subtle pool-bottom glow
-    { position: { x: 0, y: -1.8, z: 0 }, color: '#66ccdd', intensity: 0.3, type: 'point', distance: 10 },
+    // Skylight panels — uneven, some dimmer than others
+    { position: { x: -6, y: 9.5, z: -8 }, color: '#ddeeff', intensity: 0.5, type: 'rect' },
+    { position: { x: 6, y: 9.5, z: -8 }, color: '#ddeeff', intensity: 0.7, type: 'rect' },
+    { position: { x: -6, y: 9.5, z: 8 }, color: '#ddeeff', intensity: 0.3, type: 'rect' },
+    { position: { x: 6, y: 9.5, z: 8 }, color: '#ddeeff', intensity: 0.6, type: 'rect' },
+    // Eerie pool-bottom glow — something luminous at the drain
+    { position: { x: 0, y: -1.8, z: 0 }, color: '#44ddcc', intensity: 0.5, type: 'point', distance: 14 },
+    // Faint orange emergency light near the far wall
+    { position: { x: -11, y: 3, z: 14 }, color: '#ff8844', intensity: 0.3, type: 'point', distance: 6, decay: 2 },
   ],
   palette: {
     primary: '#66ccdd',
     secondary: '#d4c9b0',
-    accent: '#88eeff',
-    fog: '#1a2a35',
+    accent: '#44ddcc',
+    fog: '#0f1a25',
     floor: '#88ccbb',
-    ceiling: '#cccccc',
+    ceiling: '#aaaaaa',
     wall: '#d4c9b0',
   },
   atmosphere: {
-    fogDensity: 0.02,
-    fogColor: '#1a2a35',
+    fogDensity: 0.025,
+    fogColor: '#0f1a25',
     particleType: 'dust',
-    particleCount: 50,
+    particleCount: 60,
     ambientSoundHint: 'cavernous_echo',
   },
   furniture: [
-    // Pool ladders
-    { type: 'pool_ladder', position: { x: -6, y: -2, z: -8 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
-    { type: 'pool_ladder', position: { x: 6, y: -2, z: 8 }, rotation: { x: 0, y: Math.PI, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
-    // Diving board
-    { type: 'diving_board', position: { x: 0, y: 0, z: -12 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
-    // Drain grate at pool center
-    { type: 'drain_grate', position: { x: 0, y: -2, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
+    // Pool ladders — one bent
+    { type: 'pool_ladder', position: { x: -8, y: -2, z: -10 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
+    { type: 'pool_ladder', position: { x: 8, y: -2, z: 10 }, rotation: { x: 0, y: Math.PI, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
+    // Diving board extending over the void
+    { type: 'diving_board', position: { x: 0, y: 0, z: -15 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1.2, y: 1, z: 1 } },
+    // Drain grate at pool center — the glow source
+    { type: 'drain_grate', position: { x: 0, y: -2, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1.5, y: 1, z: 1.5 } },
+    // Abandoned towel rack
+    { type: 'towel_rack', position: { x: 11, y: 0, z: -5 }, rotation: { x: 0, y: -Math.PI / 2, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
   ],
   doorways: [
-    // Pool-level exit
+    // Pool deck exit — main path
     {
-      position: { x: -10, y: 0 },
+      position: { x: -12, y: 0 },
       facingAngle: Math.PI / 2,
       width: 3,
       height: 3.5,
@@ -209,20 +233,30 @@ const emptyPool: CuratedRoom = {
       leadsTo: 3,
       glowColor: '#ffdd88',
     },
-    // Pool-bottom corridor
+    // Far end — locker room passage
     {
-      position: { x: 0, y: -15 },
+      position: { x: 0, y: 17 },
       facingAngle: 0,
+      width: 3.5,
+      height: 4,
+      wallSegmentIndex: 2,
+      leadsTo: 4,
+      glowColor: '#556677',
+    },
+    // Pool-bottom tunnel — unsettling descent
+    {
+      position: { x: 0, y: -17 },
+      facingAngle: Math.PI,
       width: 2,
       height: 2.5,
       wallSegmentIndex: 0,
-      leadsTo: 4,
-      glowColor: '#334455',
+      leadsTo: 5,
+      glowColor: '#223344',
     },
   ],
   floorType: FloorType.TILE,
   ceilingConfig: {
-    height: 8,
+    height: 10,
     hasLighting: true,
     lightingType: 'recessed',
     hasSkylight: true,
@@ -231,8 +265,8 @@ const emptyPool: CuratedRoom = {
   verticalElements: [
     {
       type: 'sunken' as const,
-      footprint: rectVertices(14, 20),
-      heightDelta: -2,
+      footprint: rectVertices(16, 24),
+      heightDelta: -2.5,
       hasRail: false,
       accessible: true,
       connectsVia: 'stairs',
@@ -247,20 +281,23 @@ const backroomsOffice: CuratedRoom = {
   templateId: 'backrooms_office',
   name: 'The Backrooms Office',
   archetype: RoomArchetype.OFFICE,
-  shapeType: RoomShape.RECTANGLE,
-  dimensions: { width: 25, height: 3, depth: 25 },
-  floorVertices: rectVertices(25, 25),
-  wallSegments: wallsFromPolygon(rectVertices(25, 25), 3),
+  shapeType: RoomShape.L_SHAPE,
+  dimensions: { width: 30, height: 3, depth: 30 },
+  floorVertices: lShapeVertices(30, 30, 15, 15),
+  wallSegments: wallsFromPolygon(lShapeVertices(30, 30, 15, 15), 3),
   lightSources: [
-    // Grid of harsh fluorescent panels
+    // Grid of harsh fluorescent panels — some dead, creating dark pockets
     ...Array.from({ length: 9 }, (_, i) => ({
-      position: { x: -8 + (i % 3) * 8, y: 2.9, z: -8 + Math.floor(i / 3) * 8 },
+      position: { x: -10 + (i % 3) * 10, y: 2.9, z: -10 + Math.floor(i / 3) * 10 },
       color: '#fffff0',
-      intensity: 1.0,
+      intensity: i === 4 ? 0.2 : 1.0, // Center panel is dying
       type: 'rect' as const,
-      flicker: true,
+      flicker: i === 2 || i === 6, // Some flicker
       distance: 10,
     })),
+    // L-wing has dimmer, warmer light — feels older
+    { position: { x: 22, y: 2.9, z: 10 }, color: '#ffe8c0', intensity: 0.7, type: 'rect' as const, distance: 8 },
+    { position: { x: 28, y: 2.9, z: 12 }, color: '#ffe8c0', intensity: 0.5, type: 'rect' as const, flicker: true, distance: 6 },
   ],
   palette: {
     primary: '#d4c9a0',
@@ -272,27 +309,34 @@ const backroomsOffice: CuratedRoom = {
     wall: '#f0e8d8',
   },
   atmosphere: {
-    fogDensity: 0.03,
+    fogDensity: 0.035,
     fogColor: '#2a2818',
     particleType: 'dust',
-    particleCount: 40,
+    particleCount: 50,
     ambientSoundHint: 'fluorescent_buzz',
   },
   furniture: [
-    // Grid of cubicle partitions (simplified — actual mesh generation happens at render time)
-    ...Array.from({ length: 12 }, (_, i) => ({
+    // Cubicle maze — denser, more disorienting
+    ...Array.from({ length: 16 }, (_, i) => ({
       type: 'cubicle',
-      position: { x: -8 + (i % 4) * 5, y: 0, z: -8 + Math.floor(i / 4) * 5 },
-      rotation: { x: 0, y: (i % 2) * Math.PI / 2, z: 0 },
+      position: { x: -10 + (i % 4) * 6, y: 0, z: -10 + Math.floor(i / 4) * 6 },
+      rotation: { x: 0, y: (i % 3) * Math.PI / 4, z: 0 }, // Varied angles
       scale: { x: 1, y: 1, z: 1 },
     })),
-    // Water cooler
-    { type: 'water_cooler', position: { x: -11, y: 0, z: -11 }, rotation: { x: 0, y: 0.3, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
+    // Water cooler in the corner — still bubbling
+    { type: 'water_cooler', position: { x: -13, y: 0, z: -13 }, rotation: { x: 0, y: 0.3, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
+    // Printer in L-wing — red light blinking
+    { type: 'printer', position: { x: 25, y: 0, z: 8 }, rotation: { x: 0, y: Math.PI, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
+    // Overturned chair
+    { type: 'office_chair', position: { x: 3, y: 0, z: -4 }, rotation: { x: 1.2, y: 0.5, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
   ],
   doorways: [
-    { position: { x: 0, y: -12.5 }, facingAngle: Math.PI, width: 3, height: 2.8, wallSegmentIndex: 0, leadsTo: 4, glowColor: '#99ccaa' },
-    { position: { x: 12.5, y: 0 }, facingAngle: -Math.PI / 2, width: 3, height: 2.8, wallSegmentIndex: 1, leadsTo: 5, glowColor: '#cc9988' },
-    { position: { x: -12.5, y: 5 }, facingAngle: Math.PI / 2, width: 3, height: 2.8, wallSegmentIndex: 3, leadsTo: 6, glowColor: '#8899cc' },
+    // Main entrance (south wall)
+    { position: { x: 0, y: -15 }, facingAngle: Math.PI, width: 3, height: 2.8, wallSegmentIndex: 0, leadsTo: 4, glowColor: '#99ccaa' },
+    // Fire exit (east wall of main body)
+    { position: { x: 15, y: -5 }, facingAngle: -Math.PI / 2, width: 3, height: 2.8, wallSegmentIndex: 1, leadsTo: 5, glowColor: '#cc9988' },
+    // L-wing dead end — leads deeper
+    { position: { x: 30, y: 15 }, facingAngle: -Math.PI / 2, width: 2.5, height: 2.8, wallSegmentIndex: 4, leadsTo: 6, glowColor: '#554433' },
   ],
   floorType: FloorType.CARPET,
   ceilingConfig: {
@@ -312,59 +356,74 @@ const stairwellNowhere: CuratedRoom = {
   name: 'The Stairwell to Nowhere',
   archetype: RoomArchetype.STAIRWELL,
   shapeType: RoomShape.RECTANGLE,
-  dimensions: { width: 6, height: 12, depth: 6 },
-  floorVertices: rectVertices(6, 6),
-  wallSegments: wallsFromPolygon(rectVertices(6, 6), 12),
+  dimensions: { width: 8, height: 18, depth: 8 },
+  floorVertices: rectVertices(8, 8),
+  wallSegments: wallsFromPolygon(rectVertices(8, 8), 18),
   lightSources: [
-    // Harsh bulb at each landing (3 landings)
+    // Bare bulbs at each landing — dimmer as you look up
     { position: { x: 0, y: 2, z: 0 }, color: '#ffeecc', intensity: 0.9, type: 'point', distance: 5, decay: 2 },
-    { position: { x: 0, y: 6, z: 0 }, color: '#ffeecc', intensity: 0.7, type: 'point', distance: 5, decay: 2 },
-    { position: { x: 0, y: 10, z: 0 }, color: '#ffeecc', intensity: 0.5, type: 'point', distance: 5, decay: 2 },
-    // Emergency exit signs
-    { position: { x: 2.8, y: 3.5, z: 0 }, color: '#00ff44', intensity: 0.4, type: 'point', distance: 3 },
-    { position: { x: -2.8, y: 7.5, z: 0 }, color: '#00ff44', intensity: 0.4, type: 'point', distance: 3 },
+    { position: { x: 0, y: 6, z: 0 }, color: '#ffeecc', intensity: 0.6, type: 'point', distance: 5, decay: 2 },
+    { position: { x: 0, y: 10, z: 0 }, color: '#ffeebb', intensity: 0.4, type: 'point', distance: 4, decay: 2 },
+    { position: { x: 0, y: 14, z: 0 }, color: '#ffeebb', intensity: 0.2, type: 'point', distance: 3, decay: 2 },
+    // Emergency exit signs — green glow
+    { position: { x: 3.5, y: 3.5, z: 0 }, color: '#00ff44', intensity: 0.5, type: 'point', distance: 3 },
+    { position: { x: -3.5, y: 7.5, z: 0 }, color: '#00ff44', intensity: 0.4, type: 'point', distance: 3 },
+    // Faint red glow from above — something up there
+    { position: { x: 0, y: 17, z: 0 }, color: '#ff2222', intensity: 0.15, type: 'point', distance: 6, decay: 1 },
   ],
   palette: {
     primary: '#888888',
     secondary: '#666666',
     accent: '#00ff44',
-    fog: '#1a1a22',
+    fog: '#0a0a12',
     floor: '#555555',
-    ceiling: '#444444',
+    ceiling: '#333333',
     wall: '#999999',
   },
   atmosphere: {
-    fogDensity: 0.05,
-    fogColor: '#1a1a22',
+    fogDensity: 0.06,
+    fogColor: '#0a0a12',
     particleType: 'dust',
-    particleCount: 15,
+    particleCount: 20,
     ambientSoundHint: 'stairwell_echo',
   },
   furniture: [
-    // Spiral stair meshes (simplified placement data)
+    // Stair sections
     { type: 'stair_section', position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
     // Handrails
-    { type: 'handrail', position: { x: 2, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
-    // Exposed pipes
-    { type: 'pipe_vertical', position: { x: 2.8, y: 0, z: 2.8 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 12, z: 1 } },
-    { type: 'pipe_vertical', position: { x: -2.8, y: 0, z: -2.8 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 12, z: 1 } },
+    { type: 'handrail', position: { x: 2.5, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
+    // Exposed pipes running the full height
+    { type: 'pipe_vertical', position: { x: 3.5, y: 0, z: 3.5 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 18, z: 1 } },
+    { type: 'pipe_vertical', position: { x: -3.5, y: 0, z: -3.5 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 18, z: 1 } },
+    // Graffiti on mid-level wall
+    { type: 'wall_marking', position: { x: -3.9, y: 5, z: 0 }, rotation: { x: 0, y: Math.PI / 2, z: 0 }, scale: { x: 2, y: 0.5, z: 0.1 } },
   ],
   doorways: [
-    // Single working fire door exit
+    // Ground floor exit
     {
-      position: { x: 3, y: 0 },
+      position: { x: 4, y: 0 },
       facingAngle: -Math.PI / 2,
-      width: 2,
+      width: 2.5,
       height: 3,
       wallSegmentIndex: 1,
       leadsTo: 5,
       glowColor: '#665544',
       label: 'EXIT',
     },
+    // Opposite wall — another door that shouldn't be here
+    {
+      position: { x: -4, y: 0 },
+      facingAngle: Math.PI / 2,
+      width: 2,
+      height: 2.8,
+      wallSegmentIndex: 3,
+      leadsTo: 7,
+      glowColor: '#332244',
+    },
   ],
   floorType: FloorType.CONCRETE,
   ceilingConfig: {
-    height: 12,
+    height: 18,
     hasLighting: false,
     lightingType: 'bare_bulb',
     hasSkylight: false,
@@ -437,6 +496,7 @@ const hotelCorridor: CuratedRoom = {
     { type: 'room_service_cart', position: { x: 0.5, y: 0, z: 3 }, rotation: { x: 0, y: 0.2, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
   ],
   doorways: [
+    // End of L-bend
     {
       position: { x: 22, y: 15 },
       facingAngle: -Math.PI / 2,
@@ -445,6 +505,16 @@ const hotelCorridor: CuratedRoom = {
       wallSegmentIndex: 4,
       leadsTo: 6,
       glowColor: '#6688aa',
+    },
+    // Door at the start of the corridor — where you came from, but it looks different
+    {
+      position: { x: 0, y: -15 },
+      facingAngle: 0,
+      width: 2.5,
+      height: 3.0,
+      wallSegmentIndex: 0,
+      leadsTo: 8,
+      glowColor: '#443322',
     },
   ],
   floorType: FloorType.CARPET,
@@ -519,7 +589,10 @@ const mallAtrium: CuratedRoom = {
     })),
   ],
   doorways: [
-    { position: { x: 15, y: 0 }, facingAngle: -Math.PI / 2, width: 4, height: 4, wallSegmentIndex: 1, leadsTo: 7, glowColor: '#ffffff' },
+    // Grand entrance — wide open, bright
+    { position: { x: 15, y: 0 }, facingAngle: -Math.PI / 2, width: 5, height: 5, wallSegmentIndex: 1, leadsTo: 7, glowColor: '#ffffff' },
+    // Service corridor behind shuttered storefronts — dark, narrow
+    { position: { x: -15, y: -10 }, facingAngle: Math.PI / 2, width: 2.5, height: 3, wallSegmentIndex: 3, leadsTo: 8, glowColor: '#332200' },
   ],
   floorType: FloorType.TILE,
   ceilingConfig: {
@@ -551,49 +624,54 @@ const bathroom: CuratedRoom = {
   name: 'The Bathroom',
   archetype: RoomArchetype.BATHROOM,
   shapeType: RoomShape.RECTANGLE,
-  dimensions: { width: 8, height: 3, depth: 12 },
-  floorVertices: rectVertices(8, 12),
-  wallSegments: wallsFromPolygon(rectVertices(8, 12), 3),
+  dimensions: { width: 10, height: 3.2, depth: 14 },
+  floorVertices: rectVertices(10, 14),
+  wallSegments: wallsFromPolygon(rectVertices(10, 14), 3.2),
   lightSources: [
-    // Harsh overhead fluorescent strips
-    { position: { x: 0, y: 2.9, z: -3 }, color: '#f0f8ff', intensity: 1.2, type: 'rect', distance: 6 },
-    { position: { x: 0, y: 2.9, z: 3 }, color: '#f0f8ff', intensity: 1.2, type: 'rect', distance: 6 },
+    // Harsh overhead fluorescent — one is flickering
+    { position: { x: -2, y: 3.0, z: -3 }, color: '#f0f8ff', intensity: 1.2, type: 'rect', distance: 6 },
+    { position: { x: 2, y: 3.0, z: 3 }, color: '#f0f8ff', intensity: 0.9, type: 'rect', distance: 6, flicker: true },
+    // Greenish glow from under the stalls — deeply wrong
+    { position: { x: -4, y: 0.1, z: 0 }, color: '#88ffaa', intensity: 0.15, type: 'point', distance: 4 },
   ],
   palette: {
-    primary: '#f0f0f0',
-    secondary: '#e0e8f0',
+    primary: '#e8e8e8',
+    secondary: '#d0d8e0',
     accent: '#88ccdd',
-    fog: '#202830',
-    floor: '#dddddd',
-    ceiling: '#f8f8f8',
-    wall: '#f0f0f0',
+    fog: '#182028',
+    floor: '#cccccc',
+    ceiling: '#f0f0f0',
+    wall: '#e8e8e8',
   },
   atmosphere: {
-    fogDensity: 0.02,
-    fogColor: '#202830',
+    fogDensity: 0.025,
+    fogColor: '#182028',
     particleType: 'drip',
-    particleCount: 5,
+    particleCount: 8,
     ambientSoundHint: 'dripping_echo',
   },
   furniture: [
-    // 4 bathroom stalls
-    ...Array.from({ length: 4 }, (_, i) => ({
+    // 5 bathroom stalls — the last one's door is slightly ajar
+    ...Array.from({ length: 5 }, (_, i) => ({
       type: 'bathroom_stall',
-      position: { x: -3.5, y: 0, z: -4.5 + i * 2.5 },
-      rotation: { x: 0, y: 0, z: 0 },
+      position: { x: -4, y: 0, z: -5 + i * 2.5 },
+      rotation: { x: 0, y: i === 4 ? 0.15 : 0, z: 0 },
       scale: { x: 1, y: 1, z: 1 },
     })),
-    // Row of mirrors and sinks
-    ...Array.from({ length: 3 }, (_, i) => ({
+    // Row of mirrors and sinks — one mirror cracked
+    ...Array.from({ length: 4 }, (_, i) => ({
       type: 'sink_mirror',
-      position: { x: 3.5, y: 0.9, z: -3 + i * 3 },
+      position: { x: 4.5, y: 0.9, z: -4 + i * 2.8 },
       rotation: { x: 0, y: -Math.PI / 2, z: 0 },
       scale: { x: 1, y: 1, z: 1 },
     })),
+    // Wet floor sign — knocked over
+    { type: 'wet_floor_sign', position: { x: 0, y: 0, z: 2 }, rotation: { x: 0.8, y: 0.3, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
   ],
   doorways: [
+    // Main exit
     {
-      position: { x: 0, y: 6 },
+      position: { x: 0, y: 7 },
       facingAngle: Math.PI,
       width: 2.5,
       height: 2.8,
@@ -602,10 +680,20 @@ const bathroom: CuratedRoom = {
       glowColor: '#556677',
       label: 'EMPLOYEES ONLY',
     },
+    // Maintenance access behind the last stall
+    {
+      position: { x: -5, y: -4 },
+      facingAngle: Math.PI / 2,
+      width: 1.8,
+      height: 2.2,
+      wallSegmentIndex: 3,
+      leadsTo: 9,
+      glowColor: '#223322',
+    },
   ],
   floorType: FloorType.TILE,
   ceilingConfig: {
-    height: 3,
+    height: 3.2,
     hasLighting: true,
     lightingType: 'fluorescent',
     hasSkylight: false,
@@ -667,6 +755,7 @@ const subwayPlatform: CuratedRoom = {
     { type: 'safety_line', position: { x: 1.5, y: 0.01, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 0.3, y: 1, z: 50 } },
   ],
   doorways: [
+    // Platform exit stairway
     {
       position: { x: 0, y: -25 },
       facingAngle: 0,
@@ -676,6 +765,16 @@ const subwayPlatform: CuratedRoom = {
       leadsTo: 9,
       glowColor: '#aabb99',
       label: 'EXIT',
+    },
+    // Tunnel mouth at far end — dark, forbidden
+    {
+      position: { x: 0, y: 25 },
+      facingAngle: Math.PI,
+      width: 4,
+      height: 4,
+      wallSegmentIndex: 2,
+      leadsTo: 10,
+      glowColor: '#111122',
     },
   ],
   floorType: FloorType.CONCRETE,
@@ -769,6 +868,7 @@ const serverRoom: CuratedRoom = {
     { type: 'temp_display', position: { x: -2.9, y: 2, z: 0 }, rotation: { x: 0, y: Math.PI / 2, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
   ],
   doorways: [
+    // Security door at far end
     {
       position: { x: 0, y: 10 },
       facingAngle: Math.PI,
@@ -778,6 +878,16 @@ const serverRoom: CuratedRoom = {
       leadsTo: 10,
       glowColor: '#888844',
       label: 'SECURITY',
+    },
+    // Maintenance hatch — between racks, easy to miss
+    {
+      position: { x: -3, y: -5 },
+      facingAngle: Math.PI / 2,
+      width: 2,
+      height: 2.5,
+      wallSegmentIndex: 3,
+      leadsTo: 11,
+      glowColor: '#224488',
     },
   ],
   floorType: FloorType.TILE,
@@ -863,53 +973,72 @@ const parkingGarage: CuratedRoom = {
   name: 'The Parking Garage',
   archetype: RoomArchetype.PARKING,
   shapeType: RoomShape.RECTANGLE,
-  dimensions: { width: 30, height: 3, depth: 20 },
-  floorVertices: rectVertices(30, 20),
-  wallSegments: wallsFromPolygon(rectVertices(30, 20), 3),
+  dimensions: { width: 40, height: 3.2, depth: 25 },
+  floorVertices: rectVertices(40, 25),
+  wallSegments: wallsFromPolygon(rectVertices(40, 25), 3.2),
   lightSources: [
-    // Sparse sodium-vapor lights
-    ...Array.from({ length: 4 }, (_, i) => ({
-      position: { x: -10 + i * 7, y: 2.8, z: 0 },
+    // Sparse sodium-vapor — large dark gaps between pools of orange
+    ...Array.from({ length: 5 }, (_, i) => ({
+      position: { x: -15 + i * 8, y: 3.0, z: -3 },
       color: '#ff9930',
-      intensity: 0.5,
+      intensity: 0.4,
       type: 'point' as const,
-      distance: 10,
-      decay: 1.5,
+      distance: 8,
+      decay: 2.0,
+    })),
+    // One dead light — creates a black void pocket
+    // (missing index 2 intentionally)
+    ...Array.from({ length: 3 }, (_, i) => ({
+      position: { x: -10 + i * 10, y: 3.0, z: 8 },
+      color: '#ff9930',
+      intensity: i === 1 ? 0.0 : 0.4, // Middle one dead
+      type: 'point' as const,
+      distance: 8,
+      decay: 2.0,
     })),
   ],
   palette: {
     primary: '#ff9930',
     secondary: '#555555',
     accent: '#ffcc00',
-    fog: '#0a0a10',
+    fog: '#050508',
     floor: '#555560',
-    ceiling: '#444450',
-    wall: '#666670',
+    ceiling: '#3a3a40',
+    wall: '#606068',
   },
   atmosphere: {
-    fogDensity: 0.04,
-    fogColor: '#0a0a10',
+    fogDensity: 0.05,
+    fogColor: '#050508',
     particleType: 'mist',
-    particleCount: 40,
+    particleCount: 50,
     ambientSoundHint: 'garage_drip',
   },
   furniture: [
-    // Concrete pillars
-    ...Array.from({ length: 6 }, (_, i) => ({
+    // Concrete pillars — two rows, creating lanes
+    ...Array.from({ length: 8 }, (_, i) => ({
       type: 'concrete_pillar',
-      position: { x: -10 + i * 5, y: 0, z: 0 },
+      position: { x: -14 + i * 4, y: 0, z: -4 },
       rotation: { x: 0, y: 0, z: 0 },
-      scale: { x: 0.6, y: 3, z: 0.6 },
+      scale: { x: 0.6, y: 3.2, z: 0.6 },
     })),
-    // Painted lane markings
-    { type: 'lane_marking', position: { x: 0, y: 0.01, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 30, y: 1, z: 20 } },
+    ...Array.from({ length: 8 }, (_, i) => ({
+      type: 'concrete_pillar',
+      position: { x: -14 + i * 4, y: 0, z: 4 },
+      rotation: { x: 0, y: 0, z: 0 },
+      scale: { x: 0.6, y: 3.2, z: 0.6 },
+    })),
+    // Lane markings
+    { type: 'lane_marking', position: { x: 0, y: 0.01, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 40, y: 1, z: 25 } },
   ],
   doorways: [
-    { position: { x: 15, y: 0 }, facingAngle: -Math.PI / 2, width: 4, height: 2.8, wallSegmentIndex: 1, leadsTo: 12, glowColor: '#889988' },
+    // Vehicle ramp exit — wide and bright
+    { position: { x: 20, y: 0 }, facingAngle: -Math.PI / 2, width: 5, height: 2.8, wallSegmentIndex: 1, leadsTo: 12, glowColor: '#889988' },
+    // Pedestrian door — small, around a corner
+    { position: { x: -20, y: 8 }, facingAngle: Math.PI / 2, width: 2.5, height: 2.8, wallSegmentIndex: 3, leadsTo: 13, glowColor: '#444444' },
   ],
   floorType: FloorType.CONCRETE,
   ceilingConfig: {
-    height: 3,
+    height: 3.2,
     hasLighting: false,
     lightingType: 'bare_bulb',
     hasSkylight: false,
@@ -1054,49 +1183,56 @@ const elevatorBank: CuratedRoom = {
   name: 'The Elevator Bank',
   archetype: RoomArchetype.ELEVATOR_BANK,
   shapeType: RoomShape.RECTANGLE,
-  dimensions: { width: 8, height: 4, depth: 6 },
-  floorVertices: rectVertices(8, 6),
-  wallSegments: wallsFromPolygon(rectVertices(8, 6), 4),
+  dimensions: { width: 12, height: 5, depth: 8 },
+  floorVertices: rectVertices(12, 8),
+  wallSegments: wallsFromPolygon(rectVertices(12, 8), 5),
   lightSources: [
-    // Recessed downlights
-    { position: { x: -2, y: 3.8, z: 0 }, color: '#fff0d0', intensity: 0.6, type: 'point', distance: 5, decay: 2 },
-    { position: { x: 2, y: 3.8, z: 0 }, color: '#fff0d0', intensity: 0.6, type: 'point', distance: 5, decay: 2 },
-    // Elevator indicator glow
-    { position: { x: 0, y: 3.2, z: -2.8 }, color: '#ff4400', intensity: 0.15, type: 'point', distance: 2 },
+    // Recessed downlights — warm amber
+    { position: { x: -3, y: 4.8, z: 0 }, color: '#fff0d0', intensity: 0.5, type: 'point', distance: 5, decay: 2 },
+    { position: { x: 3, y: 4.8, z: 0 }, color: '#fff0d0', intensity: 0.5, type: 'point', distance: 5, decay: 2 },
+    // Elevator indicator glow — red, unsettling
+    { position: { x: 0, y: 4.0, z: -3.8 }, color: '#ff2200', intensity: 0.25, type: 'point', distance: 3 },
+    // Faint glow from inside the middle elevator — something behind the doors
+    { position: { x: 0, y: 1.5, z: -3.9 }, color: '#aaccff', intensity: 0.1, type: 'point', distance: 2 },
   ],
   palette: {
     primary: '#c0a880',
     secondary: '#886644',
     accent: '#ff4400',
-    fog: '#151520',
+    fog: '#0d0d18',
     floor: '#8a7a6a',
-    ceiling: '#c0b8a8',
+    ceiling: '#b0a898',
     wall: '#b8a890',
   },
   atmosphere: {
-    fogDensity: 0.03,
-    fogColor: '#151520',
+    fogDensity: 0.035,
+    fogColor: '#0d0d18',
     particleType: 'none',
     particleCount: 0,
     ambientSoundHint: 'elevator_ding',
   },
   furniture: [
-    // 3 elevator doors (all closed, none functional)
-    ...Array.from({ length: 3 }, (_, i) => ({
+    // 4 elevator doors — the middle two are slightly misaligned
+    ...Array.from({ length: 4 }, (_, i) => ({
       type: 'elevator_door',
-      position: { x: -3 + i * 3, y: 0, z: -2.9 },
-      rotation: { x: 0, y: 0, z: 0 },
+      position: { x: -4.5 + i * 3, y: 0, z: -3.9 },
+      rotation: { x: 0, y: i === 1 ? 0.02 : 0, z: 0 }, // One slightly wrong
       scale: { x: 1, y: 1, z: 1 },
     })),
-    // Floor indicator display
-    { type: 'floor_indicator', position: { x: 0, y: 3.2, z: -2.85 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 0.5, y: 0.3, z: 0.05 } },
+    // Floor indicator display — showing impossible floor number
+    { type: 'floor_indicator', position: { x: 0, y: 4.0, z: -3.85 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 0.5, y: 0.3, z: 0.05 } },
+    // Potted plant — dead, dried out
+    { type: 'dead_plant', position: { x: 5, y: 0, z: 3 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
   ],
   doorways: [
-    { position: { x: 0, y: 3 }, facingAngle: Math.PI, width: 3.5, height: 3.5, wallSegmentIndex: 2, leadsTo: 15, glowColor: '#776655' },
+    // Lobby exit
+    { position: { x: 0, y: 4 }, facingAngle: Math.PI, width: 4, height: 4, wallSegmentIndex: 2, leadsTo: 15, glowColor: '#776655' },
+    // Side corridor — shouldn't exist on this floor
+    { position: { x: -6, y: 0 }, facingAngle: Math.PI / 2, width: 2.5, height: 3.5, wallSegmentIndex: 3, leadsTo: 16, glowColor: '#332244' },
   ],
   floorType: FloorType.TILE,
   ceilingConfig: {
-    height: 4,
+    height: 5,
     hasLighting: true,
     lightingType: 'recessed',
     hasSkylight: false,
@@ -1112,53 +1248,60 @@ const livingRoom: CuratedRoom = {
   name: 'The Living Room',
   archetype: RoomArchetype.LIVING_ROOM,
   shapeType: RoomShape.RECTANGLE,
-  dimensions: { width: 8, height: 3, depth: 10 },
-  floorVertices: rectVertices(8, 10),
-  wallSegments: wallsFromPolygon(rectVertices(8, 10), 3),
+  dimensions: { width: 10, height: 3.2, depth: 12 },
+  floorVertices: rectVertices(10, 12),
+  wallSegments: wallsFromPolygon(rectVertices(10, 12), 3.2),
   lightSources: [
-    // Warm table lamp
-    { position: { x: 3, y: 1, z: -3 }, color: '#ffdd99', intensity: 0.4, type: 'point', distance: 5, decay: 2 },
-    // Dim overhead
-    { position: { x: 0, y: 2.8, z: 0 }, color: '#ffe8cc', intensity: 0.3, type: 'point', distance: 6, decay: 1.5 },
-    // TV glow
-    { position: { x: 0, y: 1, z: -4.8 }, color: '#6688aa', intensity: 0.2, type: 'point', distance: 4 },
+    // Warm table lamp — the only inviting light
+    { position: { x: 3.5, y: 1, z: -3.5 }, color: '#ffdd99', intensity: 0.5, type: 'point', distance: 5, decay: 2 },
+    // Dim overhead — barely working
+    { position: { x: 0, y: 3.0, z: 0 }, color: '#ffe8cc', intensity: 0.2, type: 'point', distance: 6, decay: 1.5 },
+    // TV glow — flickering blue-white, casting long shadows
+    { position: { x: 0, y: 1, z: -5.8 }, color: '#5577aa', intensity: 0.35, type: 'point', distance: 5, flicker: true },
+    // Faint light from the hallway beyond the door
+    { position: { x: -4.8, y: 1.5, z: 3 }, color: '#ccbb99', intensity: 0.15, type: 'point', distance: 3 },
   ],
   palette: {
     primary: '#c8b090',
     secondary: '#8a7060',
-    accent: '#6688aa',
-    fog: '#151210',
+    accent: '#5577aa',
+    fog: '#0e0c0a',
     floor: '#6a5a48',
-    ceiling: '#d8d0c0',
-    wall: '#d0c8b8',
+    ceiling: '#d0c8b8',
+    wall: '#c8c0b0',
   },
   atmosphere: {
-    fogDensity: 0.025,
-    fogColor: '#151210',
+    fogDensity: 0.03,
+    fogColor: '#0e0c0a',
     particleType: 'dust',
-    particleCount: 10,
+    particleCount: 15,
     ambientSoundHint: 'living_room_clock',
   },
   furniture: [
-    // Couch
+    // Couch — sagging, worn
     { type: 'couch', position: { x: 0, y: 0, z: 1 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 2.5, y: 1, z: 1 } },
-    // Coffee table
-    { type: 'coffee_table', position: { x: 0, y: 0, z: -0.5 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1.2, y: 0.5, z: 0.8 } },
-    // TV on stand
-    { type: 'tv_stand', position: { x: 0, y: 0, z: -4.5 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1.5, y: 1, z: 0.4 } },
-    // Bookshelf
-    { type: 'bookshelf', position: { x: -3.8, y: 0, z: -2 }, rotation: { x: 0, y: Math.PI / 2, z: 0 }, scale: { x: 1, y: 2, z: 0.4 } },
+    // Coffee table — magazines scattered
+    { type: 'coffee_table', position: { x: 0, y: 0, z: -0.5 }, rotation: { x: 0, y: 0.05, z: 0 }, scale: { x: 1.2, y: 0.5, z: 0.8 } },
+    // TV — static, no signal
+    { type: 'tv_stand', position: { x: 0, y: 0, z: -5.5 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1.5, y: 1, z: 0.4 } },
+    // Bookshelf — some books are backwards
+    { type: 'bookshelf', position: { x: -4.5, y: 0, z: -2 }, rotation: { x: 0, y: Math.PI / 2, z: 0 }, scale: { x: 1, y: 2.2, z: 0.4 } },
     // Floor lamp
-    { type: 'floor_lamp', position: { x: 3, y: 0, z: -3 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
-    // Wall clock
-    { type: 'wall_clock', position: { x: 3.9, y: 2.2, z: 0 }, rotation: { x: 0, y: -Math.PI / 2, z: 0 }, scale: { x: 0.3, y: 0.3, z: 0.05 } },
+    { type: 'floor_lamp', position: { x: 3.5, y: 0, z: -3.5 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
+    // Wall clock — stopped at 3:33
+    { type: 'wall_clock', position: { x: 4.9, y: 2.4, z: 0 }, rotation: { x: 0, y: -Math.PI / 2, z: 0 }, scale: { x: 0.35, y: 0.35, z: 0.05 } },
+    // Family photo frame — face down on the shelf
+    { type: 'photo_frame', position: { x: -4.5, y: 1.2, z: -4 }, rotation: { x: Math.PI / 2, y: 0, z: 0 }, scale: { x: 0.3, y: 0.2, z: 0.02 } },
   ],
   doorways: [
-    { position: { x: -4, y: 3 }, facingAngle: Math.PI / 2, width: 2.5, height: 2.8, wallSegmentIndex: 3, leadsTo: 16, glowColor: '#554466' },
+    // Hallway — warm light spilling through
+    { position: { x: -5, y: 3 }, facingAngle: Math.PI / 2, width: 2.5, height: 2.8, wallSegmentIndex: 3, leadsTo: 16, glowColor: '#554466' },
+    // Kitchen pass-through — darker
+    { position: { x: 3, y: 6 }, facingAngle: Math.PI, width: 2.5, height: 2.8, wallSegmentIndex: 2, leadsTo: 1, glowColor: '#333322' },
   ],
   floorType: FloorType.WOOD,
   ceilingConfig: {
-    height: 3,
+    height: 3.2,
     hasLighting: true,
     lightingType: 'bare_bulb',
     hasSkylight: false,

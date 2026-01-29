@@ -393,7 +393,7 @@ function NavigationHints({ onFade }: { onFade?: () => void }) {
     >
       <div className="text-center space-y-4">
         <div className="space-y-2">
-          <div className="flex items-center justify-center gap-8 text-white/60 text-sm font-mono">
+          <div className="flex items-center justify-center gap-6 text-white/60 text-sm font-mono">
             <div className="flex items-center gap-2">
               <kbd className="px-2 py-1 rounded bg-[#1a1834]/80 border border-white/20">W</kbd>
               <kbd className="px-2 py-1 rounded bg-[#1a1834]/80 border border-white/20">A</kbd>
@@ -404,6 +404,10 @@ function NavigationHints({ onFade }: { onFade?: () => void }) {
             <div className="flex items-center gap-2">
               <kbd className="px-2 py-1 rounded bg-[#1a1834]/80 border border-white/20">Mouse</kbd>
               <span className="text-white/40">Look</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <kbd className="px-2 py-1 rounded bg-[#1a1834]/80 border border-white/20">Space</kbd>
+              <span className="text-white/40">Jump</span>
             </div>
           </div>
           <div className="text-xs text-[#c792f5]/60">
@@ -540,19 +544,19 @@ function MobileTouchControls({ enabled }: { enabled: boolean }) {
     }
   }, []);
 
-  // Handle sprint button
-  const handleSprintTouchStart = useCallback((e: React.TouchEvent) => {
+  // Handle jump button
+  const handleJumpTouchStart = useCallback((e: React.TouchEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setIsSprintPressed(true);
-    getTouchInputManager().setSprint(true);
+    getTouchInputManager().setJump(true);
   }, []);
 
-  const handleSprintTouchEnd = useCallback((e: React.TouchEvent) => {
+  const handleJumpTouchEnd = useCallback((e: React.TouchEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setIsSprintPressed(false);
-    getTouchInputManager().setSprint(false);
+    getTouchInputManager().setJump(false);
   }, []);
 
   if (!enabled) return null;
@@ -596,18 +600,18 @@ function MobileTouchControls({ enabled }: { enabled: boolean }) {
         </div>
       </div>
 
-      {/* Sprint button */}
+      {/* Jump button */}
       <div
         className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-30 px-6 py-3 backdrop-blur-sm rounded-lg border pointer-events-auto touch-none transition-all duration-100 ${
           isSprintPressed
             ? 'bg-[#c792f5]/60 border-[#c792f5]/80 scale-95'
             : 'bg-[#c792f5]/20 border-[#c792f5]/30'
         }`}
-        onTouchStart={handleSprintTouchStart}
-        onTouchEnd={handleSprintTouchEnd}
-        onTouchCancel={handleSprintTouchEnd}
+        onTouchStart={handleJumpTouchStart}
+        onTouchEnd={handleJumpTouchEnd}
+        onTouchCancel={handleJumpTouchEnd}
       >
-        <span className="text-[10px] text-[#c792f5] font-mono select-none">SPRINT</span>
+        <span className="text-[10px] text-[#c792f5] font-mono select-none">JUMP</span>
       </div>
     </>
   );
