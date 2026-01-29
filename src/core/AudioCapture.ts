@@ -19,6 +19,7 @@ export class AudioCapture {
   private sourceNode: MediaStreamAudioSourceNode | null = null;
   private audioSource: AudioSource = null;
   private events: AudioCaptureEvents;
+  private autoResumeCleanup: (() => void) | null = null;
 
   constructor(events: AudioCaptureEvents = {}) {
     this.events = events;
@@ -168,8 +169,43 @@ export class AudioCapture {
       await this.audioContext.resume();
     }
 
+    // Install a one-time user-interaction listener to resume the context
+    // if the browser suspends it due to autoplay restrictions
+    this.installAutoResumeListener();
+
     // Create media stream source
     this.sourceNode = this.audioContext.createMediaStreamSource(this.mediaStream);
+  }
+
+  /**
+   * Install a one-time click/keypress listener that resumes a suspended AudioContext.
+   * Browsers may suspend contexts created outside a direct user gesture; this ensures
+   * the first real interaction unlocks playback.
+   */
+  private installAutoResumeListener(): void {
+    const ctx = this.audioContext;
+    if (!ctx) return;
+
+    const resume = () => {
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+      // Remove listeners once resumed
+      window.removeEventListener('click', resume);
+      window.removeEventListener('keydown', resume);
+      window.removeEventListener('pointerdown', resume);
+    };
+
+    window.addEventListener('click', resume, { once: false });
+    window.addEventListener('keydown', resume, { once: false });
+    window.addEventListener('pointerdown', resume, { once: false });
+
+    // Also store a cleanup reference so we can remove on dispose
+    this.autoResumeCleanup = () => {
+      window.removeEventListener('click', resume);
+      window.removeEventListener('keydown', resume);
+      window.removeEventListener('pointerdown', resume);
+    };
   }
 
   /**
@@ -192,6 +228,12 @@ export class AudioCapture {
    * Clean up all resources
    */
   private cleanup(): void {
+    // Remove auto-resume listeners
+    if (this.autoResumeCleanup) {
+      this.autoResumeCleanup();
+      this.autoResumeCleanup = null;
+    }
+
     // Stop all tracks
     if (this.mediaStream) {
       this.mediaStream.getTracks().forEach(track => track.stop());

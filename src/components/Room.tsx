@@ -53,6 +53,11 @@ export function Room({
     const room = generator.generate(roomIndex, entryWall);
     roomRef.current = room;
 
+    // Verify the generated mesh is non-empty (has walls, floor, ceiling)
+    if (room.mesh.children.length === 0) {
+      console.warn(`[Room] Room ${roomIndex} generated with empty mesh group — geometry may be missing`);
+    }
+
     // Store config for atmosphere component
     setRoomConfig(room.config);
 
@@ -64,6 +69,8 @@ export function Room({
       );
       childrenToRemove.forEach(child => groupRef.current!.remove(child));
       groupRef.current.add(room.mesh);
+    } else {
+      console.warn(`[Room] groupRef not available for room ${roomIndex} — mesh not added to scene`);
     }
 
     // Cleanup on unmount

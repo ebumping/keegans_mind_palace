@@ -212,6 +212,21 @@ export class RoomGenerator {
     geometries.push(floorGeom);
     materials.push(floorMat);
 
+    // Dark floor fallback — ensures no black void is ever visible beneath the player.
+    // Placed slightly below the main floor so it's only visible through transparent/void floors.
+    const fallbackFloorGeom = new THREE.PlaneGeometry(
+      config.dimensions.width * 1.5,
+      config.dimensions.depth * 1.5
+    );
+    const fallbackFloorMat = new THREE.MeshBasicMaterial({ color: 0x1a1a2e });
+    const fallbackFloor = new THREE.Mesh(fallbackFloorGeom, fallbackFloorMat);
+    fallbackFloor.rotation.x = -Math.PI / 2;
+    fallbackFloor.position.y = -0.05; // Just below the main floor
+    fallbackFloor.receiveShadow = true;
+    group.add(fallbackFloor);
+    geometries.push(fallbackFloorGeom);
+    materials.push(fallbackFloorMat);
+
     if (config.ceilingConfig.isVisible) {
       const { ceilingMesh, ceilingGeom, ceilingMat } = this.createCeiling(config);
       group.add(ceilingMesh);
@@ -479,7 +494,7 @@ export class RoomGenerator {
       hasLighting: rng.next() > abnormality * 0.5,
       lightingType: rng.pick(['recessed', 'fluorescent', 'bare_bulb', 'none']),
       hasSkylight: rng.chance(0.1),
-      isVisible: !(abnormality > 0.4 && rng.chance(abnormality * 0.3)),
+      isVisible: true, // Always render ceilings — no black void above the player
     };
   }
 
@@ -603,7 +618,9 @@ export class RoomGenerator {
   }
 
   /**
-   * Create walls from polygon vertices for non-rectangular room shapes
+   * Create walls from polygon vertices for non-rectangular room shapes.
+   * Each polygon edge produces a visible, properly UV-mapped wall mesh
+   * with normals facing inward toward the polygon centroid.
    */
   private createWallsFromPolygon(config: RoomConfig): {
     wallMeshes: THREE.Mesh[];
@@ -626,6 +643,15 @@ export class RoomGenerator {
     const height = dimensions.height;
     const vertices = shape.vertices;
 
+    // Compute polygon centroid for determining inward direction
+    let cx = 0, cy = 0;
+    for (const v of vertices) {
+      cx += v.x;
+      cy += v.y;
+    }
+    cx /= vertices.length;
+    cy /= vertices.length;
+
     // Create a wall segment for each edge of the polygon
     for (let i = 0; i < vertices.length; i++) {
       const v1 = vertices[i];
@@ -638,26 +664,57 @@ export class RoomGenerator {
 
       if (wallLength < 0.1) continue; // Skip degenerate edges
 
-      // Wall center position (x, y are floor coordinates, z is height)
+      // Wall center position (x, y are floor coordinates mapped to x, z in 3D)
       const centerX = (v1.x + v2.x) / 2;
-      const centerY = (v1.y + v2.y) / 2;
+      const centerZ = (v1.y + v2.y) / 2;
 
-      // Rotation to face inward (perpendicular to edge)
+      // Edge direction angle
       const angle = Math.atan2(dy, dx);
 
-      // Create wall geometry
-      const geometry = new THREE.PlaneGeometry(wallLength, height, 2, 2);
+      // Determine the outward normal of this edge
+      // For edge from v1 to v2, the two possible normals are at angle +/- PI/2
+      // Pick the one pointing away from centroid (outward), then flip for inward-facing plane
+      const normalCandidate1X = Math.cos(angle + Math.PI / 2);
+      const normalCandidate1Y = Math.sin(angle + Math.PI / 2);
+
+      // Vector from edge center to centroid
+      const toCentroidX = cx - centerX;
+      const toCentroidZ = cy - centerZ;
+
+      // Dot product: if positive, normalCandidate1 points toward centroid (inward)
+      const dot = normalCandidate1X * toCentroidX + normalCandidate1Y * toCentroidZ;
+
+      // We want the plane's front face (default normal = +Z in local space) to face inward
+      // PlaneGeometry faces +Z in local space before rotation
+      // Rotation around Y by theta makes the plane face direction (sin(theta), 0, cos(theta))
+      // We want that direction to point inward (toward centroid)
+      let facingAngle: number;
+      if (dot > 0) {
+        // normalCandidate1 points inward — plane should face that direction
+        facingAngle = angle + Math.PI / 2;
+      } else {
+        // normalCandidate2 points inward
+        facingAngle = angle - Math.PI / 2;
+      }
+
+      // PlaneGeometry default normal is (0,0,1). Rotating by Y=theta faces it toward (sin(theta), 0, cos(theta)).
+      // We want the facing direction = (sin(rotY), 0, cos(rotY)) = (cos(facingAngle), 0, sin(facingAngle)) mapped to 3D xz
+      // Since in 3D: x=x, z=y(2D), the inward normal in 3D is (inwardX, 0, inwardZ)
+      // where inwardX = cos(facingAngle), inwardZ = sin(facingAngle)
+      // For PlaneGeometry rotated by rotY around Y: normal = (sin(rotY), 0, cos(rotY))
+      // So sin(rotY) = cos(facingAngle), cos(rotY) = sin(facingAngle)
+      // rotY = atan2(cos(facingAngle), sin(facingAngle)) = PI/2 - facingAngle
+      const rotY = Math.PI / 2 - facingAngle;
+
+      // Create wall geometry with enough segments for audio-reactive vertex displacement
+      const geometry = new THREE.PlaneGeometry(wallLength, height, 4, 4);
       this.applyUVMapping(geometry, wallLength, height);
 
       const mesh = new THREE.Mesh(geometry, material);
 
       // Position: center of wall edge, half height up
-      // Note: v1.x,v1.y are floor coordinates (x, z in 3D), y is up
-      mesh.position.set(centerX, height / 2, centerY);
-
-      // Rotate to align with edge and face inward
-      mesh.rotation.set(0, -angle + Math.PI / 2, 0);
-
+      mesh.position.set(centerX, height / 2, centerZ);
+      mesh.rotation.set(0, rotY, 0);
       mesh.receiveShadow = true;
 
       wallMeshes.push(mesh);

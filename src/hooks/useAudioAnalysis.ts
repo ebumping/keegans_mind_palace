@@ -120,7 +120,7 @@ export function useAudioAnalysis(): UseAudioAnalysisReturn {
       if (audioContext && sourceNode) {
         audioAnalyserRef.current = new AudioAnalyser(audioContext, sourceNode, {
           fftSize: 2048,
-          smoothing: 0.8,
+          smoothing: 0.4,          // Reduced from 0.8 for better transient response
           transientThreshold: 30,
           transientDecay: 0.05,
         });

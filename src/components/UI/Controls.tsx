@@ -239,45 +239,66 @@ function FullscreenButton() {
 // ============================================
 
 function AudioLevelIndicator() {
-  const { bass, mid, high, overall } = useAudioStore(
+  const { bass, mid, high, overall, isCapturing, audioSource } = useAudioStore(
     useShallow((state) => ({
       bass: state.bass,
       mid: state.mid,
       high: state.high,
       overall: state.overall,
+      isCapturing: state.isCapturing,
+      audioSource: state.audioSource,
     }))
   );
 
+  // Pulsing animation state for the capture indicator
+  const hasSignal = overall > 0.02;
+
   return (
     <div className="flex items-center gap-1.5">
+      {/* Capture status dot — pulses when capturing, dim when silent */}
+      <div
+        className={`w-2.5 h-2.5 rounded-full transition-all duration-150 ${
+          isCapturing
+            ? hasSignal
+              ? 'bg-[#c792f5] shadow-[0_0_8px_#c792f5]'
+              : 'bg-[#c792f5]/40 animate-pulse'
+            : 'bg-white/20'
+        }`}
+        title={
+          isCapturing
+            ? `${audioSource ?? 'unknown'} — ${hasSignal ? 'receiving audio' : 'no signal'}`
+            : 'not capturing'
+        }
+      />
+
       {/* Bass bar */}
-      <div className="w-1.5 h-8 bg-[#1a1834] rounded-full overflow-hidden">
+      <div className="w-1.5 h-8 bg-[#1a1834] rounded-full overflow-hidden flex flex-col justify-end">
         <div
-          className="w-full bg-gradient-to-t from-[#c792f5] to-[#c792f5]/60 transition-all duration-75"
+          className="w-full bg-gradient-to-t from-[#c792f5] to-[#c792f5]/60 rounded-full transition-all duration-75"
           style={{ height: `${Math.max(5, bass * 100)}%` }}
         />
       </div>
 
       {/* Mid bar */}
-      <div className="w-1.5 h-8 bg-[#1a1834] rounded-full overflow-hidden">
+      <div className="w-1.5 h-8 bg-[#1a1834] rounded-full overflow-hidden flex flex-col justify-end">
         <div
-          className="w-full bg-gradient-to-t from-[#8eecf5] to-[#8eecf5]/60 transition-all duration-75"
+          className="w-full bg-gradient-to-t from-[#8eecf5] to-[#8eecf5]/60 rounded-full transition-all duration-75"
           style={{ height: `${Math.max(5, mid * 100)}%` }}
         />
       </div>
 
       {/* High bar */}
-      <div className="w-1.5 h-8 bg-[#1a1834] rounded-full overflow-hidden">
+      <div className="w-1.5 h-8 bg-[#1a1834] rounded-full overflow-hidden flex flex-col justify-end">
         <div
-          className="w-full bg-gradient-to-t from-white/60 to-white/40 transition-all duration-75"
+          className="w-full bg-gradient-to-t from-white/60 to-white/40 rounded-full transition-all duration-75"
           style={{ height: `${Math.max(5, high * 100)}%` }}
         />
       </div>
 
-      {/* Overall indicator */}
+      {/* Overall intensity glow dot */}
       <div
         className={`w-2 h-2 rounded-full transition-all duration-75 ${
-          overall > 0.7 ? 'bg-[#c792f5] shadow-[0_0_8px_#c792f5]' : 'bg-white/30'
+          overall > 0.7 ? 'bg-[#c792f5] shadow-[0_0_8px_#c792f5]' : overall > 0.3 ? 'bg-[#c792f5]/50' : 'bg-white/20'
         }`}
       />
     </div>

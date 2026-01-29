@@ -14,7 +14,7 @@
  */
 
 import * as THREE from 'three';
-import type { RoomConfig, DoorwayPlacement, Wall, RoomDimensions } from '../types/room';
+import type { RoomConfig, DoorwayPlacement, Wall, RoomDimensions, Point2D } from '../types/room';
 
 // ============================================================================
 // Types
@@ -92,6 +92,89 @@ export const SLIDE_FRICTION = 0.99;
 export const MAX_SLIDE_ITERATIONS = 3;
 
 // ============================================================================
+// Polygon Utilities
+// ============================================================================
+
+/**
+ * Ray-casting point-in-polygon test.
+ * Works for any simple (non-self-intersecting) polygon.
+ */
+export function pointInPolygon(point: Point2D, polygon: Point2D[]): boolean {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].x;
+    const yi = polygon[i].y;
+    const xj = polygon[j].x;
+    const yj = polygon[j].y;
+
+    if (
+      yi > point.y !== yj > point.y &&
+      point.x < ((xj - xi) * (point.y - yi)) / (yj - yi) + xi
+    ) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/**
+ * Compute the centroid of a polygon.
+ */
+export function polygonCentroid(polygon: Point2D[]): Point2D {
+  let cx = 0, cy = 0;
+  for (const v of polygon) {
+    cx += v.x;
+    cy += v.y;
+  }
+  return { x: cx / polygon.length, y: cy / polygon.length };
+}
+
+/**
+ * Compute closest point on a line segment to a given point.
+ * Returns the closest point and the distance.
+ */
+function closestPointOnSegment(
+  px: number, py: number,
+  ax: number, ay: number,
+  bx: number, by: number
+): { x: number; y: number; dist: number } {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const lenSq = dx * dx + dy * dy;
+
+  let t = 0;
+  if (lenSq > 0) {
+    t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
+  }
+
+  const cx = ax + t * dx;
+  const cy = ay + t * dy;
+  const distX = px - cx;
+  const distY = py - cy;
+
+  return { x: cx, y: cy, dist: Math.sqrt(distX * distX + distY * distY) };
+}
+
+/**
+ * Compute signed distance from a point to the polygon boundary.
+ * Positive = inside, negative = outside.
+ */
+export function signedDistanceToPolygon(point: Point2D, polygon: Point2D[]): number {
+  let minDist = Infinity;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const result = closestPointOnSegment(
+      point.x, point.y,
+      polygon[j].x, polygon[j].y,
+      polygon[i].x, polygon[i].y
+    );
+    if (result.dist < minDist) {
+      minDist = result.dist;
+    }
+  }
+  return pointInPolygon(point, polygon) ? minDist : -minDist;
+}
+
+// ============================================================================
 // CollisionManager
 // ============================================================================
 
@@ -106,6 +189,10 @@ export class CollisionManager {
   // Current room reference
   private currentRoomConfig: RoomConfig | null = null;
   private roomBounds: THREE.Box3 = new THREE.Box3();
+
+  // Polygon room data (null for rectangular rooms)
+  private roomPolygon: Point2D[] | null = null;
+  private roomPolygonCentroid: Point2D = { x: 0, y: 0 };
 
   // Collision objects from scene
   private sceneColliders: THREE.Object3D[] = [];
@@ -125,12 +212,29 @@ export class CollisionManager {
     this.clear();
     this.currentRoomConfig = config;
 
-    // Calculate room bounds
+    // Calculate room bounds (AABB fallback)
     const { width, height, depth } = config.dimensions;
     this.roomBounds.set(
       new THREE.Vector3(-width / 2, 0, -depth / 2),
       new THREE.Vector3(width / 2, height, depth / 2)
     );
+
+    // Store polygon data for non-rectangular rooms
+    if (config.shape && config.shape.vertices && config.shape.vertices.length >= 3) {
+      this.roomPolygon = config.shape.vertices;
+      this.roomPolygonCentroid = polygonCentroid(config.shape.vertices);
+    } else {
+      // Synthesize a rectangle polygon for uniform handling
+      const hw = width / 2;
+      const hd = depth / 2;
+      this.roomPolygon = [
+        { x: -hw, y: -hd },
+        { x: hw, y: -hd },
+        { x: hw, y: hd },
+        { x: -hw, y: hd },
+      ];
+      this.roomPolygonCentroid = { x: 0, y: 0 };
+    }
 
     // Create wall colliders
     this.createWallColliders(config);
@@ -143,31 +247,60 @@ export class CollisionManager {
     const { width, height, depth } = config.dimensions;
     const wallThickness = 0.3;
 
-    // North wall (negative Z)
-    this.addStaticCollider('wall_north', new THREE.Box3(
-      new THREE.Vector3(-width / 2 - wallThickness, 0, -depth / 2 - wallThickness),
-      new THREE.Vector3(width / 2 + wallThickness, height, -depth / 2)
-    ));
+    // Create wall colliders from polygon edges (works for both rectangular and non-rectangular)
+    if (this.roomPolygon && this.roomPolygon.length >= 3) {
+      const vertices = this.roomPolygon;
+      const centroid = this.roomPolygonCentroid;
 
-    // South wall (positive Z)
-    this.addStaticCollider('wall_south', new THREE.Box3(
-      new THREE.Vector3(-width / 2 - wallThickness, 0, depth / 2),
-      new THREE.Vector3(width / 2 + wallThickness, height, depth / 2 + wallThickness)
-    ));
+      for (let i = 0; i < vertices.length; i++) {
+        const v1 = vertices[i];
+        const v2 = vertices[(i + 1) % vertices.length];
 
-    // East wall (positive X)
-    this.addStaticCollider('wall_east', new THREE.Box3(
-      new THREE.Vector3(width / 2, 0, -depth / 2),
-      new THREE.Vector3(width / 2 + wallThickness, height, depth / 2)
-    ));
+        // Edge direction
+        const edgeDx = v2.x - v1.x;
+        const edgeDy = v2.y - v1.y;
+        const edgeLen = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy);
+        if (edgeLen < 0.001) continue;
 
-    // West wall (negative X)
-    this.addStaticCollider('wall_west', new THREE.Box3(
-      new THREE.Vector3(-width / 2 - wallThickness, 0, -depth / 2),
-      new THREE.Vector3(-width / 2, height, depth / 2)
-    ));
+        // Outward normal (perpendicular to edge, pointing away from centroid)
+        let nx = edgeDy / edgeLen;
+        let nz = -edgeDx / edgeLen;
+        const midX = (v1.x + v2.x) / 2;
+        const midZ = (v1.y + v2.y) / 2;
+        const toCentroidX = centroid.x - midX;
+        const toCentroidZ = centroid.y - midZ;
+        if (nx * toCentroidX + nz * toCentroidZ > 0) {
+          nx = -nx;
+          nz = -nz;
+        }
 
-    // Floor
+        // Create a thin oriented box along this edge
+        // The box extends wallThickness outward from the edge
+        const halfLen = edgeLen / 2 + wallThickness; // Extend past corners to seal gaps
+        const halfThick = wallThickness / 2;
+
+        // Box center: midpoint of edge, offset outward by half thickness
+        const boxCenterX = midX + nx * halfThick;
+        const boxCenterZ = midZ + nz * halfThick;
+
+        // Create an AABB that bounds the rotated wall collider
+        // For simplicity and robustness, use an oriented AABB that covers the wall segment
+        const angle = Math.atan2(edgeDy, edgeDx);
+        const cosA = Math.abs(Math.cos(angle));
+        const sinA = Math.abs(Math.sin(angle));
+
+        // AABB half-extents for the rotated box
+        const hx = halfLen * cosA + halfThick * sinA;
+        const hz = halfLen * sinA + halfThick * cosA;
+
+        this.addStaticCollider(`wall_poly_${i}`, new THREE.Box3(
+          new THREE.Vector3(boxCenterX - hx, 0, boxCenterZ - hz),
+          new THREE.Vector3(boxCenterX + hx, height, boxCenterZ + hz)
+        ));
+      }
+    }
+
+    // Floor (using bounding box for floor/ceiling is fine — polygon containment handles XZ)
     this.addStaticCollider('floor', new THREE.Box3(
       new THREE.Vector3(-width / 2, -wallThickness, -depth / 2),
       new THREE.Vector3(width / 2, 0, depth / 2)
@@ -184,55 +317,130 @@ export class CollisionManager {
     const { width, depth } = config.dimensions;
 
     for (const doorway of config.doorways) {
-      const doorwayPos = this.getDoorwayWorldPosition(doorway, config.dimensions);
       const halfWidth = doorway.width / 2;
       const frameThickness = config.doorwayGeometry?.frameThickness || 0.1;
 
       let frameBounds: THREE.Box3;
       let triggerBounds: THREE.Box3;
 
-      // Create frame collision (solid) and trigger volume (passthrough)
-      switch (doorway.wall) {
-        case 'north':
-          frameBounds = new THREE.Box3(
-            new THREE.Vector3(doorwayPos.x - halfWidth - frameThickness, 0, -depth / 2 - 0.2),
-            new THREE.Vector3(doorwayPos.x + halfWidth + frameThickness, doorway.height + frameThickness, -depth / 2)
-          );
-          triggerBounds = new THREE.Box3(
-            new THREE.Vector3(doorwayPos.x - halfWidth, 0, -depth / 2 - 0.5),
-            new THREE.Vector3(doorwayPos.x + halfWidth, doorway.height, -depth / 2 + 0.5)
-          );
-          break;
-        case 'south':
-          frameBounds = new THREE.Box3(
-            new THREE.Vector3(doorwayPos.x - halfWidth - frameThickness, 0, depth / 2),
-            new THREE.Vector3(doorwayPos.x + halfWidth + frameThickness, doorway.height + frameThickness, depth / 2 + 0.2)
-          );
-          triggerBounds = new THREE.Box3(
-            new THREE.Vector3(doorwayPos.x - halfWidth, 0, depth / 2 - 0.5),
-            new THREE.Vector3(doorwayPos.x + halfWidth, doorway.height, depth / 2 + 0.5)
-          );
-          break;
-        case 'east':
-          frameBounds = new THREE.Box3(
-            new THREE.Vector3(width / 2, 0, doorwayPos.z - halfWidth - frameThickness),
-            new THREE.Vector3(width / 2 + 0.2, doorway.height + frameThickness, doorwayPos.z + halfWidth + frameThickness)
-          );
-          triggerBounds = new THREE.Box3(
-            new THREE.Vector3(width / 2 - 0.5, 0, doorwayPos.z - halfWidth),
-            new THREE.Vector3(width / 2 + 0.5, doorway.height, doorwayPos.z + halfWidth)
-          );
-          break;
-        case 'west':
-          frameBounds = new THREE.Box3(
-            new THREE.Vector3(-width / 2 - 0.2, 0, doorwayPos.z - halfWidth - frameThickness),
-            new THREE.Vector3(-width / 2, doorway.height + frameThickness, doorwayPos.z + halfWidth + frameThickness)
-          );
-          triggerBounds = new THREE.Box3(
-            new THREE.Vector3(-width / 2 - 0.5, 0, doorwayPos.z - halfWidth),
-            new THREE.Vector3(-width / 2 + 0.5, doorway.height, doorwayPos.z + halfWidth)
-          );
-          break;
+      // Check if this doorway is placed on a polygon edge (non-cardinal)
+      if (doorway.edgeStart && doorway.edgeEnd) {
+        // Polygon edge doorway: compute bounds along arbitrary edge direction
+        const esx = doorway.edgeStart.x;
+        const esz = doorway.edgeStart.y; // Point2D.y maps to world Z
+        const eex = doorway.edgeEnd.x;
+        const eez = doorway.edgeEnd.y;
+
+        const edgeDx = eex - esx;
+        const edgeDz = eez - esz;
+        const edgeLen = Math.sqrt(edgeDx * edgeDx + edgeDz * edgeDz);
+        if (edgeLen < 0.001) continue;
+
+        // Edge direction (unit)
+        const dirX = edgeDx / edgeLen;
+        const dirZ = edgeDz / edgeLen;
+
+        // Outward normal
+        const centroid = this.roomPolygonCentroid;
+        let nx = edgeDz / edgeLen;
+        let nz = -edgeDx / edgeLen;
+        const midX = (esx + eex) / 2;
+        const midZ = (esz + eez) / 2;
+        if (nx * (centroid.x - midX) + nz * (centroid.y - midZ) > 0) {
+          nx = -nx;
+          nz = -nz;
+        }
+
+        // Doorway center along edge
+        const t = doorway.position; // 0-1 along edge
+        const cx = esx + edgeDx * t;
+        const cz = esz + edgeDz * t;
+
+        // Frame bounds: AABB encompassing the doorway along the edge
+        const fHalfAlong = halfWidth + frameThickness;
+        const fHalfNormal = 0.2;
+
+        const corners = [
+          { x: cx + dirX * fHalfAlong + nx * fHalfNormal, z: cz + dirZ * fHalfAlong + nz * fHalfNormal },
+          { x: cx + dirX * fHalfAlong - nx * fHalfNormal, z: cz + dirZ * fHalfAlong - nz * fHalfNormal },
+          { x: cx - dirX * fHalfAlong + nx * fHalfNormal, z: cz - dirZ * fHalfAlong + nz * fHalfNormal },
+          { x: cx - dirX * fHalfAlong - nx * fHalfNormal, z: cz - dirZ * fHalfAlong - nz * fHalfNormal },
+        ];
+        const minX = Math.min(...corners.map(c => c.x));
+        const maxX = Math.max(...corners.map(c => c.x));
+        const minZ = Math.min(...corners.map(c => c.z));
+        const maxZ = Math.max(...corners.map(c => c.z));
+
+        frameBounds = new THREE.Box3(
+          new THREE.Vector3(minX, 0, minZ),
+          new THREE.Vector3(maxX, doorway.height + frameThickness, maxZ)
+        );
+
+        // Trigger bounds: slightly larger zone for transition detection
+        const tHalfAlong = halfWidth;
+        const tHalfNormal = 0.5;
+
+        const tCorners = [
+          { x: cx + dirX * tHalfAlong + nx * tHalfNormal, z: cz + dirZ * tHalfAlong + nz * tHalfNormal },
+          { x: cx + dirX * tHalfAlong - nx * tHalfNormal, z: cz + dirZ * tHalfAlong - nz * tHalfNormal },
+          { x: cx - dirX * tHalfAlong + nx * tHalfNormal, z: cz - dirZ * tHalfAlong + nz * tHalfNormal },
+          { x: cx - dirX * tHalfAlong - nx * tHalfNormal, z: cz - dirZ * tHalfAlong - nz * tHalfNormal },
+        ];
+        const tMinX = Math.min(...tCorners.map(c => c.x));
+        const tMaxX = Math.max(...tCorners.map(c => c.x));
+        const tMinZ = Math.min(...tCorners.map(c => c.z));
+        const tMaxZ = Math.max(...tCorners.map(c => c.z));
+
+        triggerBounds = new THREE.Box3(
+          new THREE.Vector3(tMinX, 0, tMinZ),
+          new THREE.Vector3(tMaxX, doorway.height, tMaxZ)
+        );
+      } else {
+        // Cardinal wall doorway (existing behavior)
+        const doorwayPos = this.getDoorwayWorldPosition(doorway, config.dimensions);
+
+        switch (doorway.wall) {
+          case 'north':
+            frameBounds = new THREE.Box3(
+              new THREE.Vector3(doorwayPos.x - halfWidth - frameThickness, 0, -depth / 2 - 0.2),
+              new THREE.Vector3(doorwayPos.x + halfWidth + frameThickness, doorway.height + frameThickness, -depth / 2)
+            );
+            triggerBounds = new THREE.Box3(
+              new THREE.Vector3(doorwayPos.x - halfWidth, 0, -depth / 2 - 0.5),
+              new THREE.Vector3(doorwayPos.x + halfWidth, doorway.height, -depth / 2 + 0.5)
+            );
+            break;
+          case 'south':
+            frameBounds = new THREE.Box3(
+              new THREE.Vector3(doorwayPos.x - halfWidth - frameThickness, 0, depth / 2),
+              new THREE.Vector3(doorwayPos.x + halfWidth + frameThickness, doorway.height + frameThickness, depth / 2 + 0.2)
+            );
+            triggerBounds = new THREE.Box3(
+              new THREE.Vector3(doorwayPos.x - halfWidth, 0, depth / 2 - 0.5),
+              new THREE.Vector3(doorwayPos.x + halfWidth, doorway.height, depth / 2 + 0.5)
+            );
+            break;
+          case 'east':
+            frameBounds = new THREE.Box3(
+              new THREE.Vector3(width / 2, 0, doorwayPos.z - halfWidth - frameThickness),
+              new THREE.Vector3(width / 2 + 0.2, doorway.height + frameThickness, doorwayPos.z + halfWidth + frameThickness)
+            );
+            triggerBounds = new THREE.Box3(
+              new THREE.Vector3(width / 2 - 0.5, 0, doorwayPos.z - halfWidth),
+              new THREE.Vector3(width / 2 + 0.5, doorway.height, doorwayPos.z + halfWidth)
+            );
+            break;
+          case 'west':
+            frameBounds = new THREE.Box3(
+              new THREE.Vector3(-width / 2 - 0.2, 0, doorwayPos.z - halfWidth - frameThickness),
+              new THREE.Vector3(-width / 2, doorway.height + frameThickness, doorwayPos.z + halfWidth + frameThickness)
+            );
+            triggerBounds = new THREE.Box3(
+              new THREE.Vector3(-width / 2 - 0.5, 0, doorwayPos.z - halfWidth),
+              new THREE.Vector3(-width / 2 + 0.5, doorway.height, doorwayPos.z + halfWidth)
+            );
+            break;
+        }
       }
 
       this.portalColliders.push({
@@ -252,6 +460,8 @@ export class CollisionManager {
     this.portalColliders = [];
     this.sceneColliders = [];
     this.currentRoomConfig = null;
+    this.roomPolygon = null;
+    this.roomPolygonCentroid = { x: 0, y: 0 };
   }
 
   // ============================================================================
@@ -749,6 +959,97 @@ export class CollisionManager {
 
   getRoomConfig(): RoomConfig | null {
     return this.currentRoomConfig;
+  }
+
+  getRoomPolygon(): Point2D[] | null {
+    return this.roomPolygon;
+  }
+
+  getRoomPolygonCentroid(): Point2D {
+    return this.roomPolygonCentroid;
+  }
+
+  /**
+   * Test if an XZ position is inside the room polygon.
+   * Uses point-in-polygon for non-rectangular rooms.
+   */
+  isInsideRoom(x: number, z: number): boolean {
+    if (!this.roomPolygon) return true; // No polygon = no constraint
+    return pointInPolygon({ x, y: z }, this.roomPolygon);
+  }
+
+  /**
+   * Clamp an XZ position to stay inside the room polygon.
+   * If the point is outside, project it back to the nearest edge.
+   * Returns the clamped position.
+   */
+  clampToRoom(x: number, z: number, margin: number = 0): { x: number; z: number } {
+    if (!this.roomPolygon) return { x, z };
+
+    const polygon = this.roomPolygon;
+    const point: Point2D = { x, y: z };
+
+    if (pointInPolygon(point, polygon)) {
+      // Inside — optionally enforce margin from walls
+      if (margin > 0) {
+        const dist = signedDistanceToPolygon(point, polygon);
+        if (dist < margin) {
+          // Too close to edge, push inward
+          return this.pushInsidePolygon(x, z, margin);
+        }
+      }
+      return { x, z };
+    }
+
+    // Outside — find closest point on polygon boundary and push inside
+    return this.pushInsidePolygon(x, z, margin);
+  }
+
+  private pushInsidePolygon(x: number, z: number, margin: number): { x: number; z: number } {
+    const polygon = this.roomPolygon!;
+    let closestX = x, closestZ = z;
+    let minDist = Infinity;
+
+    // Find closest point on polygon boundary
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const ax = polygon[j].x, ay = polygon[j].y;
+      const bx = polygon[i].x, by = polygon[i].y;
+
+      const dx = bx - ax;
+      const dy = by - ay;
+      const lenSq = dx * dx + dy * dy;
+      let t = 0;
+      if (lenSq > 0) {
+        t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - ay) * dy) / lenSq));
+      }
+      const cx = ax + t * dx;
+      const cy = ay + t * dy;
+      const dist = Math.sqrt((x - cx) * (x - cx) + (z - cy) * (z - cy));
+
+      if (dist < minDist) {
+        minDist = dist;
+        // Push inward along the edge normal by margin
+        const edgeLen = Math.sqrt(lenSq);
+        if (edgeLen > 0.001) {
+          // Inward normal (toward centroid)
+          let nx = dy / edgeLen;
+          let nz = -dx / edgeLen;
+          const toCx = this.roomPolygonCentroid.x - (ax + bx) / 2;
+          const toCz = this.roomPolygonCentroid.y - (ay + by) / 2;
+          if (nx * toCx + nz * toCz < 0) {
+            nx = -nx;
+            nz = -nz;
+          }
+          closestX = cx + nx * margin;
+          closestZ = cy + nz * margin;
+        } else {
+          closestX = cx;
+          closestZ = cy;
+        }
+      }
+    }
+
+    return { x: closestX, z: closestZ };
   }
 
   // ============================================================================

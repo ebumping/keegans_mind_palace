@@ -164,6 +164,10 @@ export interface DoorwayPlacement {
   width: number;
   height: number;
   leadsTo: number; // Target room index
+  // Polygon edge placement (optional — for non-rectangular rooms)
+  edgeIndex?: number;        // Index of polygon edge this doorway is on
+  edgeStart?: Point2D;       // Start vertex of the edge
+  edgeEnd?: Point2D;         // End vertex of the edge
 }
 
 export interface DoorwayGeometry {
@@ -224,4 +228,117 @@ export interface GeneratedRoom {
 
   update(audioLevels: AudioLevels, delta: number): void;
   dispose(): void;
+}
+
+// ============================================
+// Curated Room Template System
+// ============================================
+
+/** A wall segment defined by start/end points and height */
+export interface WallSegment {
+  start: Point2D;
+  end: Point2D;
+  height: number;
+  /** Optional: material override for this wall segment */
+  materialOverride?: string;
+}
+
+/** A light source definition for curated rooms */
+export interface LightSource {
+  position: { x: number; y: number; z: number };
+  color: string;
+  intensity: number;
+  type: 'point' | 'spot' | 'rect' | 'ambient';
+  /** Optional: flickering driven by audio transients */
+  flicker?: boolean;
+  /** Optional: spotlight target direction */
+  target?: { x: number; y: number; z: number };
+  /** Optional: distance attenuation */
+  distance?: number;
+  /** Optional: decay factor */
+  decay?: number;
+}
+
+/** Color palette for a curated room */
+export interface RoomPalette {
+  primary: string;
+  secondary: string;
+  accent: string;
+  fog: string;
+  floor: string;
+  ceiling: string;
+  wall: string;
+}
+
+/** Atmosphere preset for a curated room */
+export interface AtmospherePreset {
+  fogDensity: number;
+  fogColor: string;
+  particleType: 'dust' | 'mist' | 'none' | 'drip' | 'cold_breath' | 'sparks';
+  particleCount: number;
+  ambientSoundHint: string;
+}
+
+/** Furniture / prop placement within a curated room */
+export interface FurniturePlacement {
+  type: string;
+  position: { x: number; y: number; z: number };
+  rotation: { x: number; y: number; z: number };
+  scale: { x: number; y: number; z: number };
+}
+
+/** Doorway definition for curated rooms — explicit position and destination */
+export interface CuratedDoorway {
+  position: Point2D;
+  /** Direction the doorway faces (angle in radians) */
+  facingAngle: number;
+  width: number;
+  height: number;
+  /** Which wall segment index this doorway cuts into */
+  wallSegmentIndex: number;
+  /** Target room index this doorway leads to */
+  leadsTo: number;
+  /** Optional glow color from next room */
+  glowColor?: string;
+  /** Optional label (e.g., "EMPLOYEES ONLY") */
+  label?: string;
+}
+
+/**
+ * A hand-crafted curated room template.
+ * Extends RoomConfig with explicit geometry and art-direction data.
+ */
+export interface CuratedRoom {
+  /** Unique template ID (e.g., "infinite_hallway", "empty_pool") */
+  templateId: string;
+  /** Human-readable name */
+  name: string;
+  /** Room archetype */
+  archetype: RoomArchetype;
+  /** Room shape type */
+  shapeType: RoomShape;
+  /** Exact room dimensions */
+  dimensions: RoomDimensions;
+  /** Explicit wall segments forming a closed boundary */
+  wallSegments: WallSegment[];
+  /** Floor polygon vertices (must form a closed polygon) */
+  floorVertices: Point2D[];
+  /** Light sources */
+  lightSources: LightSource[];
+  /** Color palette */
+  palette: RoomPalette;
+  /** Atmosphere preset */
+  atmosphere: AtmospherePreset;
+  /** Furniture and prop placements */
+  furniture: FurniturePlacement[];
+  /** Doorway definitions */
+  doorways: CuratedDoorway[];
+  /** Floor type */
+  floorType: FloorType;
+  /** Ceiling config */
+  ceilingConfig: CeilingConfig;
+  /** Optional vertical elements */
+  verticalElements?: VerticalElement[];
+  /** Optional wrongness overrides for deep-room recycling */
+  wrongnessBase?: Partial<WrongnessConfig>;
 }

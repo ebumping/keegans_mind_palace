@@ -340,7 +340,10 @@ export function updateMovement(
     collisionResult.inDoorway = fullResult.inDoorway;
     collisionResult.doorway = fullResult.doorway;
 
-    if (fullResult.collided && !fullResult.inDoorway) {
+    if (fullResult.collided) {
+      // Always respond to collisions — even near doorways.
+      // The doorway opening itself has no wall collider, so legitimate
+      // passage through a doorway will not trigger collision.
       // Try step climbing first
       const stepResult = collisionManager.attemptStep(state.position, _movement, _capsule);
 
@@ -374,17 +377,30 @@ export function updateMovement(
       state.velocity.add(fullResult.pushVector.clone().multiplyScalar(0.5));
     }
 
-    // Safety clamp: ensure player stays within room bounds
-    // This is a fallback in case raycasting misses
-    const halfWidth = roomConfig.dimensions.width / 2 - config.playerRadius;
-    const halfDepth = roomConfig.dimensions.depth / 2 - config.playerRadius;
-    state.position.x = THREE.MathUtils.clamp(state.position.x, -halfWidth, halfWidth);
-    state.position.z = THREE.MathUtils.clamp(state.position.z, -halfDepth, halfDepth);
+    // Safety clamp: ensure player stays within room polygon bounds
+    // Uses polygon containment for non-rectangular rooms, AABB for rectangular
+    const clamped = collisionManager.clampToRoom(
+      state.position.x,
+      state.position.z,
+      config.playerRadius
+    );
+    state.position.x = clamped.x;
+    state.position.z = clamped.z;
+
+    // Hard safety boundary: if player escaped to outside polygon + 1 unit margin,
+    // teleport them back to room center. This is the last-resort failsafe.
+    if (!collisionManager.isInsideRoom(state.position.x, state.position.z)) {
+      const centroid = collisionManager.getRoomPolygonCentroid();
+      state.position.x = centroid.x;
+      state.position.z = centroid.y;
+      state.velocity.set(0, 0, 0);
+    }
   } else {
     // No room config - allow free movement (fallback to legacy)
     collisionResult = checkCollision(_newPosition, config.playerRadius, roomConfig!);
 
-    if (collisionResult.collided && !collisionResult.inDoorway) {
+    if (collisionResult.collided) {
+      // Always enforce collisions — doorway openings have no wall collider
       const slideMovement = _movement
         .clone()
         .projectOnPlane(collisionResult.normal)

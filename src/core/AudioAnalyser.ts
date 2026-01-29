@@ -23,7 +23,7 @@ export interface AudioAnalyserConfig {
 
 const DEFAULT_CONFIG: Required<AudioAnalyserConfig> = {
   fftSize: 2048,
-  smoothing: 0.8,
+  smoothing: 0.4,            // Reduced from 0.8 — lets transients through; store EMA handles visual smoothing
   transientThreshold: 30,
   transientDecay: 0.05,
 };
