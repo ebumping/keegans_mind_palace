@@ -19,6 +19,7 @@ import { DebugOverlay } from './debug/DebugOverlay'
 import { getWrongnessSystem } from './systems/WrongnessSystem'
 import { getRoomPoolManager, disposeRoomPoolManager } from './systems/RoomPoolManager'
 import { usePerformanceStore, usePerformanceSettings, type PerformanceSettings } from './store/performanceStore'
+import { SettingsPanel, SettingsButton } from './components/UI/SettingsPanel'
 
 // Pale-strata color palette
 const COLORS = {
@@ -481,26 +482,37 @@ function App() {
         onCollisionDebugToggle={handleCollisionDebugToggle}
       />
 
-      {/* Toggle debug panel with 'G' key */}
+      {/* Toggle debug panel with 'G' key, settings with Tab */}
       <DebugToggle onToggle={() => setShowDebug(prev => !prev)} />
+
+      {/* Graphics Settings UI */}
+      <SettingsButton />
+      <SettingsPanel />
     </>
   )
 }
 
 /**
- * Keyboard handler for toggling debug panel.
+ * Keyboard handler for toggling debug panel and settings.
  * Press 'G' to show/hide the Growl debug panel.
+ * Press 'Tab' to toggle the graphics settings panel.
  */
 function DebugToggle({ onToggle }: { onToggle: () => void }) {
+  const toggleSettings = usePerformanceStore((s) => s.toggleSettingsPanel)
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'g' || e.key === 'G') {
         onToggle()
       }
+      if (e.key === 'Tab') {
+        e.preventDefault()
+        toggleSettings()
+      }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onToggle])
+  }, [onToggle, toggleSettings])
 
   return null
 }
