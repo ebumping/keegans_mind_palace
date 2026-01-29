@@ -483,7 +483,7 @@ function App() {
       />
 
       {/* Toggle debug panel with 'G' key, settings with Tab */}
-      <DebugToggle onToggle={() => setShowDebug(prev => !prev)} />
+      <DebugToggle onToggle={() => setShowDebug(prev => !prev)} enabled={audioPermissionGranted} />
 
       {/* Graphics Settings UI */}
       <SettingsButton />
@@ -497,11 +497,14 @@ function App() {
  * Press 'G' to show/hide the Growl debug panel.
  * Press 'Tab' to toggle the graphics settings panel.
  */
-function DebugToggle({ onToggle }: { onToggle: () => void }) {
+function DebugToggle({ onToggle, enabled }: { onToggle: () => void; enabled: boolean }) {
   const toggleSettings = usePerformanceStore((s) => s.toggleSettingsPanel)
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't intercept keys when menus/modals need keyboard navigation
+      if (!enabled) return
+
       if (e.key === 'g' || e.key === 'G') {
         onToggle()
       }
@@ -512,7 +515,7 @@ function DebugToggle({ onToggle }: { onToggle: () => void }) {
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onToggle, toggleSettings])
+  }, [onToggle, toggleSettings, enabled])
 
   return null
 }
