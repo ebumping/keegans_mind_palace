@@ -823,7 +823,7 @@ function SinglePainting({ config, position, rotation }: SinglePaintingProps) {
     }
 
     // Subtle tilt variation on transient
-    if (audioLevels.transient && audioLevels.transientIntensity > 0.6) {
+    if (audioLevels.transientIntensity > 0.6) {
       groupRef.current.rotation.z += (Math.random() - 0.5) * 0.002 * config.audioReactivity;
     }
   });

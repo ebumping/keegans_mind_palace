@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { EffectComposer, Bloom, ChromaticAberration, Vignette } from '@react-three/postprocessing'
 import { BlendFunction } from 'postprocessing'
@@ -10,13 +10,15 @@ import { AudioPermission } from './components/UI/AudioPermission'
 import { Controls } from './components/UI/Controls'
 import { useTimeStore } from './store/timeStore'
 import { useNavigationInit, useNavigation } from './hooks/useNavigation'
+import { getNavigationSystem, calculateEntryPosition, calculateEntryYaw, getOppositeWall, DEFAULT_MOVEMENT_CONFIG } from './systems/NavigationSystem'
 import { useTransition } from './hooks/useTransition'
-import { RoomGenerator } from './generators/RoomGenerator'
 import type { RoomConfig, DoorwayPlacement } from './types/room'
 import { getTransitionSystem } from './systems/TransitionSystem'
 import { CollisionDebug } from './debug/CollisionDebug'
 import { DebugOverlay } from './debug/DebugOverlay'
 import { getWrongnessSystem } from './systems/WrongnessSystem'
+import { getPortalVariationSystem } from './systems/PortalVariationSystem'
+import { getRoomPoolManager, disposeRoomPoolManager } from './systems/RoomPoolManager'
 import { usePerformanceStore, usePerformanceSettings, type PerformanceSettings } from './store/performanceStore'
 
 // Pale-strata color palette
@@ -255,29 +257,70 @@ function Scene({ showCollisionDebug = false }: SceneProps) {
   const [currentRoomIndex, setCurrentRoomIndex] = useState(0)
   const [roomConfig, setRoomConfig] = useState<RoomConfig | null>(null)
 
+  // Track the entry wall for repositioning after transition
+  const pendingEntryRef = useRef<{ wall: import('./types/room').Wall; position: number } | null>(null)
+
   // Performance settings
   const perfSettings = usePerformanceSettings()
+
+  // Initialize room pool manager (singleton, keeps current +-2 rooms)
+  const poolManager = useMemo(() => getRoomPoolManager(42), [])
 
   // Initialize transition system
   const transition = useTransition({
     onTransitionComplete: (toRoom) => {
       // Room change happens at transition midpoint
       setCurrentRoomIndex(toRoom.index)
+
+      // Reposition player to entry point of new room
+      const entry = pendingEntryRef.current
+      if (entry) {
+        const navSystem = getNavigationSystem()
+        const entryPos = calculateEntryPosition(
+          entry.wall,
+          entry.position,
+          toRoom.dimensions,
+          DEFAULT_MOVEMENT_CONFIG.playerRadius
+        )
+        const entryYaw = calculateEntryYaw(entry.wall)
+        navSystem.setPosition(entryPos)
+        navSystem.setYaw(entryYaw)
+        navSystem.resetTransitionCooldown()
+        pendingEntryRef.current = null
+      }
     },
   })
 
-  // Generate room config for collision detection
-  const generator = useMemo(() => new RoomGenerator({ baseSeed: 42 }), [])
-
-  // Update room config when room index changes
+  // Cleanup pool manager on unmount
   useEffect(() => {
-    const config = generator.generateConfig(currentRoomIndex, null)
+    return () => {
+      disposeRoomPoolManager()
+    }
+  }, [])
+
+  // Update room config when room index changes.
+  // Uses the pool manager which handles visited room caching,
+  // adjacent room pre-generation, and disposal of distant rooms.
+  useEffect(() => {
+    // Update pool window — evicts far rooms, pre-generates adjacent configs
+    poolManager.setCurrentRoom(currentRoomIndex)
+
+    // Get config from pool (uses TransitionSystem cache or generates fresh)
+    const config = poolManager.getRoomConfig(currentRoomIndex)
     setRoomConfig(config)
 
     // Update wrongness system depth
     const wrongnessSystem = getWrongnessSystem()
     wrongnessSystem.setDepth(currentRoomIndex)
-  }, [currentRoomIndex, generator])
+
+    // Log pool stats periodically
+    const stats = poolManager.getStats()
+    console.log(
+      `[RoomPool] Room ${currentRoomIndex} | Pool: ${stats.poolSize}/${stats.maxPoolSize} | ` +
+      `GPU: ${(stats.estimatedGpuMemory / 1024 / 1024).toFixed(1)}MB/${(stats.gpuBudget / 1024 / 1024).toFixed(0)}MB | ` +
+      `Disposed: ${stats.disposedCount}`
+    )
+  }, [currentRoomIndex, poolManager])
 
   // Handle transition trigger from navigation
   const handleTransition = useCallback((doorway: DoorwayPlacement) => {
@@ -288,6 +331,10 @@ function Scene({ showCollisionDebug = false }: SceneProps) {
     // Check if already transitioning
     const transitionSystem = getTransitionSystem()
     if (!transitionSystem || transitionSystem.isTransitioning()) return
+
+    // Store the entry wall for repositioning (enter from opposite wall of the exit doorway)
+    const entryWall = getOppositeWall(doorway.wall)
+    pendingEntryRef.current = { wall: entryWall, position: doorway.position }
 
     // Start transition to the room the doorway leads to
     transition.startTransition(doorway, fromRoom, doorway.leadsTo)

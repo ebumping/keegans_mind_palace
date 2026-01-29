@@ -19,6 +19,9 @@ export class AudioCapture {
   private sourceNode: MediaStreamAudioSourceNode | null = null;
   private audioSource: AudioSource = null;
   private events: AudioCaptureEvents;
+  private resumeOnInteractionBound: (() => void) | null = null;
+  private trackEndedListener: (() => void) | null = null;
+  private trackEndedTarget: MediaStreamTrack | null = null;
 
   constructor(events: AudioCaptureEvents = {}) {
     this.events = events;
@@ -108,8 +111,11 @@ export class AudioCapture {
 
       this.audioSource = 'desktop';
 
-      // Listen for stream end
-      audioTracks[0].addEventListener('ended', () => this.handleStreamEnded());
+      // Listen for stream end (store reference for cleanup)
+      this.removeTrackEndedListener();
+      this.trackEndedListener = () => this.handleStreamEnded();
+      this.trackEndedTarget = audioTracks[0];
+      audioTracks[0].addEventListener('ended', this.trackEndedListener);
 
       this.events.onStreamStart?.('desktop');
     } catch (error) {
@@ -138,9 +144,14 @@ export class AudioCapture {
 
       this.audioSource = 'microphone';
 
-      // Listen for stream end
+      // Listen for stream end (store reference for cleanup)
+      this.removeTrackEndedListener();
       const audioTrack = this.mediaStream.getAudioTracks()[0];
-      audioTrack?.addEventListener('ended', () => this.handleStreamEnded());
+      if (audioTrack) {
+        this.trackEndedListener = () => this.handleStreamEnded();
+        this.trackEndedTarget = audioTrack;
+        audioTrack.addEventListener('ended', this.trackEndedListener);
+      }
 
       this.events.onStreamStart?.('microphone');
     } catch (error) {
@@ -163,13 +174,77 @@ export class AudioCapture {
       latencyHint: 'interactive'
     });
 
+    // Monitor AudioContext state changes
+    this.audioContext.addEventListener('statechange', () => {
+      if (this.audioContext?.state === 'suspended') {
+        console.warn('[AudioCapture] AudioContext is suspended — audio analysis will receive silence. Waiting for user interaction to resume.');
+        this.addResumeOnInteraction();
+      } else if (this.audioContext?.state === 'running') {
+        this.removeResumeOnInteraction();
+      }
+    });
+
     // Resume context if suspended (autoplay policy)
     if (this.audioContext.state === 'suspended') {
-      await this.audioContext.resume();
+      console.warn('[AudioCapture] AudioContext created in suspended state (autoplay restriction). Attempting resume...');
+      try {
+        await this.audioContext.resume();
+      } catch {
+        console.warn('[AudioCapture] Initial resume failed. Will retry on next user interaction.');
+        this.addResumeOnInteraction();
+      }
     }
+
+    // Log sample rate for diagnostics — frequency band calculations depend on this
+    console.log(`[AudioCapture] AudioContext sample rate: ${this.audioContext.sampleRate}Hz`);
 
     // Create media stream source
     this.sourceNode = this.audioContext.createMediaStreamSource(this.mediaStream);
+  }
+
+  /**
+   * Register a one-shot listener on user interaction events to resume a suspended AudioContext
+   */
+  private addResumeOnInteraction(): void {
+    if (this.resumeOnInteractionBound) return; // already registered
+
+    this.resumeOnInteractionBound = () => {
+      this.resumeContext().then(() => {
+        if (this.audioContext?.state === 'running') {
+          console.log('[AudioCapture] AudioContext resumed after user interaction.');
+          this.removeResumeOnInteraction();
+        }
+      });
+    };
+
+    const events = ['click', 'keydown', 'touchstart', 'pointerdown'] as const;
+    for (const evt of events) {
+      document.addEventListener(evt, this.resumeOnInteractionBound, { once: false, passive: true });
+    }
+  }
+
+  /**
+   * Remove the user-interaction resume listeners
+   */
+  private removeResumeOnInteraction(): void {
+    if (!this.resumeOnInteractionBound) return;
+
+    const events = ['click', 'keydown', 'touchstart', 'pointerdown'] as const;
+    for (const evt of events) {
+      document.removeEventListener(evt, this.resumeOnInteractionBound);
+    }
+    this.resumeOnInteractionBound = null;
+  }
+
+  /**
+   * Remove the audio track 'ended' event listener
+   */
+  private removeTrackEndedListener(): void {
+    if (this.trackEndedListener && this.trackEndedTarget) {
+      this.trackEndedTarget.removeEventListener('ended', this.trackEndedListener);
+    }
+    this.trackEndedListener = null;
+    this.trackEndedTarget = null;
   }
 
   /**
@@ -192,6 +267,12 @@ export class AudioCapture {
    * Clean up all resources
    */
   private cleanup(): void {
+    // Remove user-interaction resume listeners
+    this.removeResumeOnInteraction();
+
+    // Remove track ended listener before stopping tracks
+    this.removeTrackEndedListener();
+
     // Stop all tracks
     if (this.mediaStream) {
       this.mediaStream.getTracks().forEach(track => track.stop());

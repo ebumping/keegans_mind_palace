@@ -13,7 +13,8 @@ import type { AudioLevels } from '../core/AudioAnalyser';
 import type { AudioSource } from '../core/AudioCapture';
 
 const HISTORY_LENGTH = 64;
-const SMOOTH_FACTOR = 0.15; // How quickly smoothed values follow raw values
+// Store-level smoothing removed — AnalyserNode smoothingTimeConstant (0.45) is sufficient.
+// Smooth values now track raw values directly to avoid triple-smoothing the audio signal.
 
 /**
  * Ring buffer for efficient history tracking without array allocations.
@@ -22,6 +23,7 @@ const SMOOTH_FACTOR = 0.15; // How quickly smoothed values follow raw values
 class RingBuffer {
   private buffer: Float32Array;
   private writeIndex: number = 0;
+  private cachedArray: number[] | null = null;
 
   constructor(size: number) {
     this.buffer = new Float32Array(size);
@@ -30,14 +32,20 @@ class RingBuffer {
   push(value: number): void {
     this.buffer[this.writeIndex] = value;
     this.writeIndex = (this.writeIndex + 1) % this.buffer.length;
+    this.cachedArray = null; // Invalidate cache on write
   }
 
-  // Get values in order from oldest to newest (for compatibility)
+  // Get values in order from oldest to newest.
+  // Returns a cached array if no writes have occurred since the last call.
   toArray(): number[] {
+    if (this.cachedArray !== null) {
+      return this.cachedArray;
+    }
     const result: number[] = new Array(this.buffer.length);
     for (let i = 0; i < this.buffer.length; i++) {
       result[i] = this.buffer[(this.writeIndex + i) % this.buffer.length];
     }
+    this.cachedArray = result;
     return result;
   }
 
@@ -49,6 +57,7 @@ class RingBuffer {
   reset(): void {
     this.buffer.fill(0);
     this.writeIndex = 0;
+    this.cachedArray = null;
   }
 }
 
@@ -71,24 +80,18 @@ export interface AudioStore {
   midSmooth: number;
   highSmooth: number;
 
-  // History for pattern generation (last 64 frames)
-  // Note: These are computed on-demand from ring buffers to maintain API compatibility
-  bassHistory: number[];
-  midHistory: number[];
-  highHistory: number[];
-
-  // History update counter (increments each frame for reactive updates)
-  historyVersion: number;
-
   // Capture state
   isCapturing: boolean;
   audioSource: AudioSource;
   error: Error | null;
+  // Set when a live audio stream ends and we fall back to demo mode
+  streamLost: boolean;
 
   // Actions
   updateLevels: (levels: AudioLevels) => void;
   setCapturing: (isCapturing: boolean, source?: AudioSource) => void;
   setError: (error: Error | null) => void;
+  setStreamLost: (lost: boolean) => void;
   reset: () => void;
 }
 
@@ -106,38 +109,26 @@ const initialState = {
   midSmooth: 0,
   highSmooth: 0,
 
-  // History (initially empty arrays, populated from ring buffers on demand)
-  bassHistory: new Array(HISTORY_LENGTH).fill(0),
-  midHistory: new Array(HISTORY_LENGTH).fill(0),
-  highHistory: new Array(HISTORY_LENGTH).fill(0),
-
-  // Version counter
-  historyVersion: 0,
-
   // Capture state
   isCapturing: false,
   audioSource: null as AudioSource,
   error: null as Error | null,
+  streamLost: false,
 };
 
-export const useAudioStore = create<AudioStore>((set, get) => ({
+export const useAudioStore = create<AudioStore>((set) => ({
   ...initialState,
 
   updateLevels: (levels: AudioLevels) => {
-    const state = get();
-
-    // Calculate smoothed values using exponential moving average
-    const bassSmooth = state.bassSmooth + (levels.bass - state.bassSmooth) * SMOOTH_FACTOR;
-    const midSmooth = state.midSmooth + (levels.mid - state.midSmooth) * SMOOTH_FACTOR;
-    const highSmooth = state.highSmooth + (levels.high - state.highSmooth) * SMOOTH_FACTOR;
+    // Pass through raw values — AnalyserNode smoothing is sufficient
+    const bassSmooth = levels.bass;
+    const midSmooth = levels.mid;
+    const highSmooth = levels.high;
 
     // Update ring buffers (no array allocation!)
     bassRingBuffer.push(levels.bass);
     midRingBuffer.push(levels.mid);
     highRingBuffer.push(levels.high);
-
-    // Increment version to signal history update (for reactive components that need it)
-    const historyVersion = state.historyVersion + 1;
 
     set({
       // Raw levels
@@ -153,8 +144,6 @@ export const useAudioStore = create<AudioStore>((set, get) => ({
       midSmooth,
       highSmooth,
 
-      // History version (arrays computed lazily via selectors)
-      historyVersion,
     });
   },
 
@@ -168,6 +157,10 @@ export const useAudioStore = create<AudioStore>((set, get) => ({
 
   setError: (error: Error | null) => {
     set({ error });
+  },
+
+  setStreamLost: (lost: boolean) => {
+    set({ streamLost: lost });
   },
 
   reset: () => {
@@ -205,16 +198,16 @@ export const useAudioSmooth = () =>
     }))
   );
 
-export const useAudioHistory = () =>
-  useAudioStore(
-    useShallow((state) => ({
-      // historyVersion is used as a dependency to trigger recomputation
-      historyVersion: state.historyVersion,
-      bassHistory: bassRingBuffer.toArray(),
-      midHistory: midRingBuffer.toArray(),
-      highHistory: highRingBuffer.toArray(),
-    }))
-  );
+/**
+ * Ref-stable getter for audio history arrays.
+ * Call this from useFrame() loops or event handlers — it does not trigger React re-renders.
+ * Arrays are cached and only reallocated when the underlying ring buffer has been written to.
+ */
+export const getAudioHistory = () => ({
+  bassHistory: bassRingBuffer.toArray(),
+  midHistory: midRingBuffer.toArray(),
+  highHistory: highRingBuffer.toArray(),
+});
 
 // Export raw ring buffers for high-performance shader access
 export const getAudioHistoryBuffers = () => ({

@@ -168,6 +168,14 @@ export class Doorway {
   }
 
   /**
+   * Set portal shimmer effect intensity and color.
+   * Used by the variation system to indicate alternate room versions.
+   */
+  setShimmer(intensity: number, color: THREE.Color): void {
+    this.generatedDoorway.setShimmer(intensity, color);
+  }
+
+  /**
    * Update doorway animation and audio reactivity
    */
   update(audioLevels: AudioLevels, delta: number, time: number): void {

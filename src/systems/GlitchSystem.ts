@@ -79,7 +79,8 @@ export class GlitchTriggerSystem {
     transientIntensity: number,
     isTransient: boolean,
     growlIntensity: number,
-    audioLevel: number
+    audioLevel: number,
+    glitchChanceMultiplier: number = 1
   ): GlitchState {
     // Increment time
     this.state.time += delta;
@@ -102,11 +103,13 @@ export class GlitchTriggerSystem {
     // Check for triggers (only if not on cooldown)
     if (this.state.cooldown <= 0) {
       const trigger = this.checkTriggers(
+        delta,
         transientIntensity,
         isTransient,
         growlIntensity,
         audioLevel,
-        scaling
+        scaling,
+        glitchChanceMultiplier
       );
       if (trigger) {
         this.startGlitch(trigger, scaling);
@@ -118,14 +121,21 @@ export class GlitchTriggerSystem {
 
   /**
    * Check all trigger conditions.
+   * Uses delta-time-based probability so trigger rates are frame-rate independent.
    */
   private checkTriggers(
+    delta: number,
     transientIntensity: number,
     isTransient: boolean,
     growlIntensity: number,
     _audioLevel: number,
-    scaling: GlitchScaling
+    scaling: GlitchScaling,
+    glitchChanceMultiplier: number
   ): GlitchTrigger | null {
+    // Normalize probability to per-second rate, then scale by delta
+    // This makes trigger rates frame-rate independent
+    const dt = Math.min(delta, 0.1); // Cap to prevent burst after tab-switch
+
     // 1. Transient trigger (immediate response to audio peaks)
     // Triggers when transient is detected with sufficient intensity
     if (isTransient && transientIntensity > 0.5) {
@@ -136,21 +146,26 @@ export class GlitchTriggerSystem {
       };
     }
 
-    // 2. Time-based trigger (scales with Growl)
-    // Base chance: 0.1% per frame, up to 0.3% at max Growl
-    const baseTimeChance = 0.001;
-    const timeChance = baseTimeChance * scaling.triggerMultiplier;
+    // 2. Growl-driven time-based trigger
+    // Base rate: ~3.6 glitches/hour at no Growl, scaling up to ~36/hour at max Growl
+    // Uses glitchChanceMultiplier from GrowlEffects for proper integration
+    const baseRatePerSecond = 0.001; // ~3.6 per hour base
+    const growlRate = baseRatePerSecond * scaling.triggerMultiplier * glitchChanceMultiplier;
+    const timeChance = 1 - Math.pow(1 - growlRate, dt * 60); // Convert to per-update probability
     if (Math.random() < timeChance) {
       return {
         type: 'time',
-        intensity: 0.3 + growlIntensity * 0.5 + scaling.intensityBoost,
+        intensity: Math.min(0.3 + growlIntensity * 0.5 + scaling.intensityBoost, 1.0),
         duration: (100 + growlIntensity * 400) * scaling.durationMultiplier,
       };
     }
 
-    // 3. Random trigger (rare but can happen anytime)
-    // Very low chance (~0.02% per frame) for surprise effect
-    if (Math.random() < 0.0002) {
+    // 3. Random ambient trigger (works even with zero Growl and no audio)
+    // Ensures the palace always feels slightly off — rare surprise glitches
+    // Rate: ~1 glitch per 5 minutes baseline
+    const randomRatePerSecond = 0.0033;
+    const randomChance = 1 - Math.pow(1 - randomRatePerSecond, dt * 60);
+    if (Math.random() < randomChance) {
       return {
         type: 'random',
         intensity: 0.2 + Math.random() * 0.3,
@@ -279,6 +294,9 @@ export interface GlitchUniforms {
   u_geometryGlitch: { value: number };
   u_screenTearOffset: { value: number };
   u_rgbSplitOffset: { value: THREE.Vector2 };
+  u_growlIntensity: { value: number };
+  u_transientIntensity: { value: number };
+  u_pixelDissolve: { value: number };
   u_resolution: { value: THREE.Vector2 };
 }
 
@@ -293,6 +311,9 @@ export function createGlitchUniforms(): GlitchUniforms {
     u_geometryGlitch: { value: 0 },
     u_screenTearOffset: { value: 0 },
     u_rgbSplitOffset: { value: new THREE.Vector2(0, 0) },
+    u_growlIntensity: { value: 0 },
+    u_transientIntensity: { value: 0 },
+    u_pixelDissolve: { value: 0 },
     u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
   };
 }
@@ -375,11 +396,13 @@ export class GlitchSystem {
     // Get audio data
     const audioState = useAudioStore.getState();
     const transientIntensity = audioState.transientIntensity;
-    const isTransient = audioState.transient;
+    const isTransient = audioState.transientIntensity > 0.1;
     const audioLevel = audioState.overall;
 
-    // Get Growl intensity
-    const growlIntensity = useTimeStore.getState().growlIntensity;
+    // Get Growl intensity and effects
+    const timeState = useTimeStore.getState();
+    const growlIntensity = timeState.growlIntensity;
+    const glitchChanceMultiplier = timeState.growlEffects.glitchChanceMultiplier;
 
     // Update trigger system
     const state = this.triggerSystem.update(
@@ -387,7 +410,8 @@ export class GlitchSystem {
       transientIntensity,
       isTransient,
       growlIntensity,
-      audioLevel
+      audioLevel,
+      glitchChanceMultiplier
     );
 
     // Update uniforms
@@ -407,6 +431,19 @@ export class GlitchSystem {
     this.uniforms.u_glitchType.value = glitchTypeToInt(state.currentGlitch);
     this.uniforms.u_glitchTime.value += delta;
 
+    // Pass audio/Growl data for shader-level scaling
+    const audioState = useAudioStore.getState();
+    const timeState = useTimeStore.getState();
+    this.uniforms.u_transientIntensity.value = audioState.transientIntensity;
+    this.uniforms.u_growlIntensity.value = timeState.growlIntensity;
+
+    // Compute pixel dissolve: active at high Growl, scales with intensity
+    // Dissolve kicks in at Growl > 0.4 and scales up
+    const growl = timeState.growlIntensity;
+    this.uniforms.u_pixelDissolve.value = state.active
+      ? Math.max(0, (growl - 0.4) / 0.6) * state.intensity
+      : 0;
+
     // Calculate specific effect parameters
     if (state.active && state.currentGlitch) {
       switch (state.currentGlitch) {
@@ -415,15 +452,18 @@ export class GlitchSystem {
           this.uniforms.u_screenTearOffset.value = Math.random();
           break;
 
-        case 'rgb_split':
-          // Random split direction
+        case 'rgb_split': {
+          // RGB split scaled by transient + Growl for proportional response
           const angle = Math.random() * Math.PI * 2;
-          const offset = state.intensity * 0.02;
+          const transientBoost = audioState.transientIntensity * 0.015;
+          const growlBoost = growl * 0.01;
+          const offset = state.intensity * 0.02 + transientBoost + growlBoost;
           this.uniforms.u_rgbSplitOffset.value.set(
             Math.cos(angle) * offset,
             Math.sin(angle) * offset
           );
           break;
+        }
 
         case 'geometry_jitter':
           this.uniforms.u_geometryGlitch.value = state.intensity;

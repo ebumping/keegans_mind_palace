@@ -353,12 +353,12 @@ export class RoomShapeGenerator {
     const outerRadius = Math.min(dims.width, dims.depth) / 2;
     const innerRadius = outerRadius * rng.range(0.2, 0.4);
     const turns = rng.range(0.75, 1.5);
-    const segments = 24;
+    const segments = 48; // High segment count for smooth continuous spiral
 
     const vertices: Point2D[] = [];
     const wallCurves: CurveDefinition[] = [];
 
-    // Outer spiral
+    // Outer spiral — dense vertices for smooth curve
     for (let i = 0; i <= segments; i++) {
       const t = i / segments;
       const angle = t * Math.PI * 2 * turns;
@@ -369,7 +369,7 @@ export class RoomShapeGenerator {
       });
     }
 
-    // Connect to inner spiral (going back)
+    // Connect to inner spiral (going back) — also dense
     for (let i = segments; i >= 0; i--) {
       const t = i / segments;
       const angle = t * Math.PI * 2 * turns;
@@ -380,13 +380,24 @@ export class RoomShapeGenerator {
       });
     }
 
-    // Mark all wall segments as curves
+    // Mark outer wall segments as curves
     for (let i = 0; i < segments; i++) {
       wallCurves.push({
         startIndex: i,
         endIndex: i + 1,
         controlPoints: [],
-        segments: 4,
+        segments: 1, // Already densely sampled, no further subdivision needed
+      });
+    }
+
+    // Mark inner wall segments as curves
+    const innerStart = segments + 1;
+    for (let i = 0; i < segments; i++) {
+      wallCurves.push({
+        startIndex: innerStart + i,
+        endIndex: innerStart + i + 1,
+        controlPoints: [],
+        segments: 1,
       });
     }
 
@@ -468,19 +479,25 @@ export class RoomShapeGenerator {
     const hw = dims.width / 2;
     const hd = dims.depth / 2;
 
-    // Start with a rectangle but add curves
-    const segments = 16;
+    // High segment count for smooth continuous curves — no corners
+    const segments = 48;
     const vertices: Point2D[] = [];
     const wallCurves: CurveDefinition[] = [];
 
-    // Generate elliptical/blob shape
+    // Pre-roll wobble parameters so they're deterministic per room
+    const wobbleFreq = rng.range(2, 5);
+    const wobblePhase = rng.range(0, Math.PI * 2);
+
+    // Generate elliptical/blob shape with dense vertices for smooth rendering
     for (let i = 0; i < segments; i++) {
       const angle = (Math.PI * 2 * i) / segments;
-      const radiusX = hw * (1 + rng.range(-0.2, 0.2) * abnormality);
-      const radiusY = hd * (1 + rng.range(-0.2, 0.2) * abnormality);
 
-      // Add wobble
-      const wobble = abnormality * 0.3 * Math.sin(angle * rng.range(2, 5));
+      // Per-vertex radius variation for organic feel
+      const radiusX = hw * (1 + rng.range(-0.15, 0.15) * abnormality);
+      const radiusY = hd * (1 + rng.range(-0.15, 0.15) * abnormality);
+
+      // Smooth wobble using deterministic frequency
+      const wobble = abnormality * 0.25 * Math.sin(angle * wobbleFreq + wobblePhase);
 
       vertices.push({
         x: Math.cos(angle) * radiusX * (1 + wobble),
@@ -488,13 +505,13 @@ export class RoomShapeGenerator {
       });
     }
 
-    // Mark all segments as curves
+    // Mark all segments as curves (already densely sampled)
     for (let i = 0; i < segments; i++) {
       wallCurves.push({
         startIndex: i,
         endIndex: (i + 1) % segments,
         controlPoints: [],
-        segments: 4,
+        segments: 1, // Dense enough already
       });
     }
 

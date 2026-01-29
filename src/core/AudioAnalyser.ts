@@ -19,13 +19,19 @@ export interface AudioAnalyserConfig {
   smoothing?: number;         // Smoothing time constant (default: 0.8)
   transientThreshold?: number; // Energy delta threshold for transients (default: 30)
   transientDecay?: number;    // Decay rate per frame (default: 0.05)
+  autoGain?: boolean;         // Enable auto-gain normalization (default: true)
+  autoGainAttack?: number;    // How fast gain rises to match louder audio (default: 0.05)
+  autoGainRelease?: number;   // How fast gain falls when audio quiets (default: 0.005)
 }
 
 const DEFAULT_CONFIG: Required<AudioAnalyserConfig> = {
   fftSize: 2048,
-  smoothing: 0.8,
+  smoothing: 0.45,
   transientThreshold: 30,
   transientDecay: 0.05,
+  autoGain: true,
+  autoGainAttack: 0.05,
+  autoGainRelease: 0.005,
 };
 
 export class AudioAnalyser {
@@ -37,7 +43,15 @@ export class AudioAnalyser {
 
   // Transient detection state
   private previousEnergy: number = 0;
+  private smoothedEnergy: number = 0;
   private transientDecayValue: number = 0;
+  private lastTransientTimeMs: number = 0;
+  private static readonly TRANSIENT_DEBOUNCE_MS = 50;
+
+  // Auto-gain normalization state
+  // Tracks the recent peak level and scales output so quiet audio still drives visuals
+  private recentPeak: number = 0.5;  // Start at midpoint to avoid initial spike
+  private readonly AUTO_GAIN_MIN_PEAK = 0.05; // Floor to avoid division by near-zero
 
   constructor(
     audioContext: AudioContext,
@@ -51,11 +65,18 @@ export class AudioAnalyser {
     this.analyserNode = audioContext.createAnalyser();
     this.analyserNode.fftSize = this.config.fftSize;
     this.analyserNode.smoothingTimeConstant = this.config.smoothing;
-    this.analyserNode.minDecibels = -90;
-    this.analyserNode.maxDecibels = -10;
+    this.analyserNode.minDecibels = -70;
+    this.analyserNode.maxDecibels = -20;
 
     // Connect source to analyser
     source.connect(this.analyserNode);
+
+    // Log sample rate used for frequency band mapping
+    const sampleRate = audioContext.sampleRate;
+    const binHz = sampleRate / this.config.fftSize;
+    console.log(
+      `[AudioAnalyser] Sample rate: ${sampleRate}Hz, FFT: ${this.config.fftSize}, bin resolution: ${binHz.toFixed(1)}Hz/bin`
+    );
 
     // Create data buffers
     // frequencyBinCount = fftSize / 2
@@ -115,11 +136,11 @@ export class AudioAnalyser {
   /**
    * Extract bass, mid, and high frequency bands
    *
-   * Frequency to bin mapping:
+   * Frequency to bin mapping (uses actual audioContext.sampleRate):
    * bin = frequency / (sampleRate / fftSize)
    * frequency = bin * (sampleRate / fftSize)
    *
-   * At 44.1kHz with fftSize 2048:
+   * Example at 44.1kHz with fftSize 2048:
    * - Each bin represents ~21.5Hz
    * - Nyquist frequency: 22050Hz
    * - Bin count: 1024
@@ -140,10 +161,37 @@ export class AudioAnalyser {
     const mid = this.averageRange(bassEndBin, midEndBin);
     const high = this.averageRange(midEndBin, Math.min(highEndBin, binCount));
 
+    let normBass = bass / 255;
+    let normMid = mid / 255;
+    let normHigh = high / 255;
+
+    // Auto-gain normalization: scale output relative to recent peak
+    if (this.config.autoGain) {
+      const currentMax = Math.max(normBass, normMid, normHigh);
+
+      // Track recent peak with asymmetric attack/release
+      if (currentMax > this.recentPeak) {
+        // Fast attack: quickly adapt to louder audio
+        this.recentPeak += (currentMax - this.recentPeak) * this.config.autoGainAttack;
+      } else {
+        // Slow release: gradually lower gain floor when audio quiets
+        this.recentPeak += (currentMax - this.recentPeak) * this.config.autoGainRelease;
+      }
+
+      // Clamp peak floor to avoid extreme amplification of silence
+      const effectivePeak = Math.max(this.recentPeak, this.AUTO_GAIN_MIN_PEAK);
+      const gain = 1.0 / effectivePeak;
+
+      // Apply gain and clamp to 0-1
+      normBass = Math.min(1, normBass * gain);
+      normMid = Math.min(1, normMid * gain);
+      normHigh = Math.min(1, normHigh * gain);
+    }
+
     return {
-      bass: bass / 255,
-      mid: mid / 255,
-      high: high / 255,
+      bass: normBass,
+      mid: normMid,
+      high: normHigh,
     };
   }
 
@@ -205,22 +253,35 @@ export class AudioAnalyser {
 
   /**
    * Detect sudden changes in amplitude (transients)
+   *
+   * Energy is smoothed before the threshold comparison to prevent
+   * sudden audio drops from triggering false positives. A debounce
+   * interval prevents rapid re-firing within ~50ms.
    */
   private detectTransient(): { isTransient: boolean; intensity: number } {
-    const currentEnergy = this.calculateEnergy();
-    const delta = currentEnergy - this.previousEnergy;
+    const rawEnergy = this.calculateEnergy();
+
+    // Smooth energy BEFORE comparing to threshold —
+    // raw energy spikes/drops cause spurious triggers without this
+    this.smoothedEnergy = rawEnergy * 0.7 + this.smoothedEnergy * 0.3;
+
+    const delta = this.smoothedEnergy - this.previousEnergy;
 
     // Decay transient state over time
     this.transientDecayValue = Math.max(0, this.transientDecayValue - this.config.transientDecay);
 
-    // Check if energy delta exceeds threshold
-    if (delta > this.config.transientThreshold) {
+    // Check if energy delta exceeds threshold, with debounce
+    const now = performance.now();
+    const debounceElapsed = now - this.lastTransientTimeMs >= AudioAnalyser.TRANSIENT_DEBOUNCE_MS;
+
+    if (delta > this.config.transientThreshold && debounceElapsed) {
       // Scale intensity based on how much the threshold was exceeded
       this.transientDecayValue = Math.min(1, delta / 100);
+      this.lastTransientTimeMs = now;
     }
 
-    // Smooth the previous energy to avoid false positives
-    this.previousEnergy = currentEnergy * 0.9 + this.previousEnergy * 0.1;
+    // Update previous energy from the smoothed value
+    this.previousEnergy = this.smoothedEnergy;
 
     return {
       isTransient: this.transientDecayValue > 0.1,
@@ -251,6 +312,18 @@ export class AudioAnalyser {
     if (config.transientDecay !== undefined) {
       this.config.transientDecay = config.transientDecay;
     }
+
+    if (config.autoGain !== undefined) {
+      this.config.autoGain = config.autoGain;
+    }
+
+    if (config.autoGainAttack !== undefined) {
+      this.config.autoGainAttack = config.autoGainAttack;
+    }
+
+    if (config.autoGainRelease !== undefined) {
+      this.config.autoGainRelease = config.autoGainRelease;
+    }
   }
 
   /**
@@ -268,8 +341,8 @@ export class DemoAudioGenerator {
   private time: number = 0;
   private lastTransientTime: number = 0;
 
-  getLevels(): AudioLevels {
-    this.time += 0.016; // ~60fps
+  getLevels(delta: number = 0.016): AudioLevels {
+    this.time += delta;
 
     // Generate organic-looking patterns using sine waves
     const bass = (Math.sin(this.time * 0.5) + 1) / 2 * 0.6 + 0.2;

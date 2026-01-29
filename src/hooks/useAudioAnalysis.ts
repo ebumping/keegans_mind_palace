@@ -35,6 +35,7 @@ export function useAudioAnalysis(): UseAudioAnalysisReturn {
   const audioAnalyserRef = useRef<AudioAnalyser | null>(null);
   const demoGeneratorRef = useRef<DemoAudioGenerator | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const lastFrameTimeRef = useRef<number>(0);
 
   const { isCapturing, audioSource, error } = useAudioCapture();
   const levels = useAudioStore(
@@ -58,18 +59,26 @@ export function useAudioAnalysis(): UseAudioAnalysisReturn {
   const updateLevels = useAudioStore((state) => state.updateLevels);
   const setCapturing = useAudioStore((state) => state.setCapturing);
   const setError = useAudioStore((state) => state.setError);
+  const setStreamLost = useAudioStore((state) => state.setStreamLost);
   const reset = useAudioStore((state) => state.reset);
 
   /**
    * Animation frame loop for updating audio levels
    */
   const startAnalysisLoop = useCallback(() => {
-    const loop = () => {
+    lastFrameTimeRef.current = 0;
+
+    const loop = (timestamp: number) => {
+      const delta = lastFrameTimeRef.current === 0
+        ? 0.016
+        : (timestamp - lastFrameTimeRef.current) / 1000;
+      lastFrameTimeRef.current = timestamp;
+
       if (audioAnalyserRef.current) {
         const levels = audioAnalyserRef.current.getLevels();
         updateLevels(levels);
       } else if (demoGeneratorRef.current) {
-        const levels = demoGeneratorRef.current.getLevels();
+        const levels = demoGeneratorRef.current.getLevels(delta);
         updateLevels(levels);
       }
       animationFrameRef.current = requestAnimationFrame(loop);
@@ -94,16 +103,33 @@ export function useAudioAnalysis(): UseAudioAnalysisReturn {
   const startCapture = useCallback(async () => {
     // Stop any existing capture
     stopCapture();
+    // Clear any previous stream-lost notification
+    setStreamLost(false);
 
     try {
       // Create audio capture instance
       audioCaptureRef.current = new AudioCapture({
-        onStreamStart: (source) => {
-          setCapturing(true, source);
+        onStreamStart: () => {
+          // Capturing state is set after analyser creation below
+          // to avoid a premature state update before the pipeline is ready
         },
         onStreamEnd: () => {
-          setCapturing(false);
           stopAnalysisLoop();
+          // Zero out all audio values so shaders don't freeze on stale data
+          reset();
+          // Clean up analyser since the stream is gone
+          if (audioAnalyserRef.current) {
+            audioAnalyserRef.current.dispose();
+            audioAnalyserRef.current = null;
+          }
+          audioCaptureRef.current = null;
+          // Notify UI that the live audio source was lost
+          setStreamLost(true);
+          // Auto-fallback to demo mode so visuals keep moving
+          console.log('[useAudioAnalysis] Audio stream ended, falling back to demo mode');
+          demoGeneratorRef.current = new DemoAudioGenerator();
+          startAnalysisLoop();
+          setCapturing(true, 'demo');
         },
         onError: (err) => {
           setError(err);
@@ -118,6 +144,9 @@ export function useAudioAnalysis(): UseAudioAnalysisReturn {
       const sourceNode = audioCaptureRef.current.getSourceNode();
 
       if (audioContext && sourceNode) {
+        // Ensure AudioContext is resumed (autoplay policy may suspend it)
+        await audioCaptureRef.current.resumeContext();
+
         audioAnalyserRef.current = new AudioAnalyser(audioContext, sourceNode, {
           fftSize: 2048,
           smoothing: 0.8,
@@ -141,7 +170,7 @@ export function useAudioAnalysis(): UseAudioAnalysisReturn {
       console.log('Audio capture failed, starting demo mode');
       startDemoMode();
     }
-  }, [setCapturing, setError, startAnalysisLoop, stopAnalysisLoop]);
+  }, [setCapturing, setError, setStreamLost, startAnalysisLoop, stopAnalysisLoop, reset]);
 
   /**
    * Stop audio capture and clean up

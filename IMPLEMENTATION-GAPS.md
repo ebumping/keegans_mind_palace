@@ -25,9 +25,9 @@ In practice, this pipeline has multiple breaks, dead code, and over-smoothing th
 **Problem:** `createLiminalUniforms()` never defines `u_geometryGlitch` or `u_glitchTime`, but the vertex shader (`liminal.vert`) expects them. When `GlitchSystem.registerMaterial()` checks for `u_geometryGlitch`, it doesn't find it. Materials never register for glitch updates.
 
 **Tasks:**
-- [ ] Add `u_geometryGlitch: { value: 0.0 }` and `u_glitchTime: { value: 0.0 }` to `createLiminalUniforms()` in `AudioReactiveSystem.ts`
-- [ ] Verify `GlitchSystem.registerMaterial()` can find and update these uniforms after the fix
-- [ ] Test geometry distortion visually responds to audio transients
+- [x] Add `u_geometryGlitch: { value: 0.0 }` and `u_glitchTime: { value: 0.0 }` to `createLiminalUniforms()` in `AudioReactiveSystem.ts`
+- [x] Verify `GlitchSystem.registerMaterial()` can find and update these uniforms after the fix
+- [x] Test geometry distortion visually responds to audio transients
 
 ---
 
@@ -43,10 +43,10 @@ In practice, this pipeline has multiple breaks, dead code, and over-smoothing th
 Combined, this makes audio feel delayed and unresponsive. Sharp transients are rounded off before they reach the GPU.
 
 **Tasks:**
-- [ ] Reduce `smoothingTimeConstant` from `0.8` to `0.4`–`0.5` on the AnalyserNode
-- [ ] Remove or reduce store-level smoothing (`SMOOTH_FACTOR`) — AnalyserNode smoothing is sufficient
-- [ ] Audit shader smoothing — decide whether `u_bassSmooth` should exist at all, or if raw values are enough
-- [ ] Verify audio transients visually punch through with a test track (kick drum isolation)
+- [x] Reduce `smoothingTimeConstant` from `0.8` to `0.4`–`0.5` on the AnalyserNode
+- [x] Remove or reduce store-level smoothing (`SMOOTH_FACTOR`) — AnalyserNode smoothing is sufficient
+- [x] Audit shader smoothing — decide whether `u_bassSmooth` should exist at all, or if raw values are enough
+- [x] Verify audio transients visually punch through with a test track (kick drum isolation)
 
 ---
 
@@ -61,9 +61,9 @@ uniforms.u_transient.value = audioData.transient; // boolean → 0 or 1
 This means the shader only ever sees `0` or `1` — no gradual falloff, no proportional response. The useful `transientIntensity` value is ignored.
 
 **Tasks:**
-- [ ] Change shader update to use `audioData.transientIntensity` instead of `audioData.transient`
-- [ ] Audit all consumers of `audioData.transient` boolean and decide if it should be removed from the API
-- [ ] Verify transient-driven effects (glitch triggers, artifact spawns) respond proportionally
+- [x] Change shader update to use `audioData.transientIntensity` instead of `audioData.transient`
+- [x] Audit all consumers of `audioData.transient` boolean and decide if it should be removed from the API
+- [x] Verify transient-driven effects (glitch triggers, artifact spawns) respond proportionally
 
 ---
 
@@ -74,9 +74,9 @@ This means the shader only ever sees `0` or `1` — no gradual falloff, no propo
 **Problem:** `AudioCapture.resumeContext()` exists but is never called. Browsers with autoplay restrictions (Chrome, Safari) suspend AudioContext until explicit user-gesture resume. Analysis loop runs but receives all zeros.
 
 **Tasks:**
-- [ ] Call `audioCapture.resumeContext()` after successful `startCapture()` in `useAudioAnalysis.ts`
-- [ ] Add a check: if `audioContext.state === 'suspended'`, resume on next user interaction
-- [ ] Log a warning when AudioContext is suspended so developers can diagnose
+- [x] Call `audioCapture.resumeContext()` after successful `startCapture()` in `useAudioAnalysis.ts`
+- [x] Add a check: if `audioContext.state === 'suspended'`, resume on next user interaction
+- [x] Log a warning when AudioContext is suspended so developers can diagnose
 
 ---
 
@@ -90,9 +90,9 @@ This means the shader only ever sees `0` or `1` — no gradual falloff, no propo
 - UI shows audio inactive, but room still "breathes" at frozen intensity
 
 **Tasks:**
-- [ ] On stream end, zero out all audio store values (bass/mid/high/transient → 0)
-- [ ] Auto-transition to demo mode when stream drops, or smoothly decay values to zero
-- [ ] Show UI indicator that audio source was lost
+- [x] On stream end, zero out all audio store values (bass/mid/high/transient → 0)
+- [x] Auto-transition to demo mode when stream drops, or smoothly decay values to zero
+- [x] Show UI indicator that audio source was lost
 
 ---
 
@@ -103,8 +103,8 @@ This means the shader only ever sees `0` or `1` — no gradual falloff, no propo
 **Problem:** `DemoAudioGenerator` increments time with hardcoded `this.time += 0.016` (~60fps). At 30fps the demo runs at half speed; at 144fps it runs at 2.4x speed.
 
 **Tasks:**
-- [ ] Pass actual delta time to `DemoAudioGenerator.getLevels(delta)`
-- [ ] Replace `this.time += 0.016` with `this.time += delta`
+- [x] Pass actual delta time to `DemoAudioGenerator.getLevels(delta)`
+- [x] Replace `this.time += 0.016` with `this.time += delta`
 
 ---
 
@@ -115,9 +115,9 @@ This means the shader only ever sees `0` or `1` — no gradual falloff, no propo
 **Problem:** `useAudioHistory()` calls `.toArray()` on ring buffers, creating new array instances each frame. `useShallow` always sees new references. Every consumer re-renders every frame regardless of actual change.
 
 **Tasks:**
-- [ ] Cache `toArray()` results and only regenerate when `historyVersion` changes
-- [ ] Or expose a ref-stable getter instead of a selector
-- [ ] Remove `historyVersion` counter if unused after fix (currently dead code)
+- [x] Cache `toArray()` results and only regenerate when `historyVersion` changes
+- [x] Or expose a ref-stable getter instead of a selector
+- [x] Remove `historyVersion` counter if unused after fix (currently dead code)
 
 ---
 
@@ -128,8 +128,8 @@ This means the shader only ever sees `0` or `1` — no gradual falloff, no propo
 **Problem:** Store state contains `bassHistory`, `midHistory`, `highHistory` arrays initialized to zeros but never written to by `updateLevels()`. Actual history lives in ring buffers. These arrays are dead code that misleads consumers.
 
 **Tasks:**
-- [ ] Remove `bassHistory`, `midHistory`, `highHistory` from store state
-- [ ] Or populate them from ring buffers in `updateLevels()` if they serve a purpose
+- [x] Remove `bassHistory`, `midHistory`, `highHistory` from store state
+- [x] Or populate them from ring buffers in `updateLevels()` if they serve a purpose
 
 ---
 
@@ -140,8 +140,8 @@ This means the shader only ever sees `0` or `1` — no gradual falloff, no propo
 **Problem:** Audio track `ended` event listeners are added but never removed. Starting a new stream leaves stale listeners on old disposed tracks.
 
 **Tasks:**
-- [ ] Store listener references and remove them in `cleanup()`
-- [ ] Verify no stale callbacks fire after stream replacement
+- [x] Store listener references and remove them in `cleanup()`
+- [x] Verify no stale callbacks fire after stream replacement
 
 ---
 
@@ -152,8 +152,8 @@ This means the shader only ever sees `0` or `1` — no gradual falloff, no propo
 **Problem:** `setCapturing(true, source)` is called both in the `onStreamStart` callback (line ~102) and again after analyser creation (line ~134). Redundant state update could cause race conditions.
 
 **Tasks:**
-- [ ] Remove one of the duplicate calls
-- [ ] Verify capturing state transitions are clean
+- [x] Remove one of the duplicate calls
+- [x] Verify capturing state transitions are clean
 
 ---
 
@@ -170,10 +170,10 @@ The generators produce rich configs (shapes, archetypes, vertical elements, wron
 **Problem:** `RoomGenerator` calls `VerticalElementGenerator.generate()` and stores results in `RoomConfig.verticalElements`. But `Room.tsx` has no component that renders vertical elements. Sunken areas, raised platforms, mezzanines, pits, shafts, and split-level floors are all invisible.
 
 **Tasks:**
-- [ ] Create `VerticalElements.tsx` component that renders floor depressions, platforms, stairs, and mezzanines from config
-- [ ] Integrate into `Room.tsx` rendering pipeline
-- [ ] Add collision geometry for vertical elements in `CollisionManager.ts`
-- [ ] Test that room spatial complexity is visible when walking through rooms 5+
+- [x] Create `VerticalElements.tsx` component that renders floor depressions, platforms, stairs, and mezzanines from config
+- [x] Integrate into `Room.tsx` rendering pipeline
+- [x] Add collision geometry for vertical elements in `CollisionManager.ts`
+- [x] Test that room spatial complexity is visible when walking through rooms 5+
 
 ---
 
@@ -184,10 +184,10 @@ The generators produce rich configs (shapes, archetypes, vertical elements, wron
 **Problem:** Full circuitry generation exists — spawn probability, node layout, trace patterns, audio-reactive pulse shader. But `RoomGenerator` never calls `CircuitryGenerator`. `Room.tsx` has no circuitry rendering. The entire electronic circuit aesthetic is absent.
 
 **Tasks:**
-- [ ] Call `CircuitryGenerator.generate()` from `RoomGenerator` when `shouldSpawnCircuitry()` returns true
-- [ ] Create `CircuitryOverlay.tsx` component that renders circuit traces on wall/floor surfaces
-- [ ] Connect `CircuitrySystem` audio pulse uniforms to rendered materials
-- [ ] Verify ~20% of rooms show glowing circuit traces (spec target: 15–25%)
+- [x] Call `CircuitryGenerator.generate()` from `RoomGenerator` when `shouldSpawnCircuitry()` returns true
+- [x] Create `CircuitryOverlay.tsx` component that renders circuit traces on wall/floor surfaces
+- [x] Connect `CircuitrySystem` audio pulse uniforms to rendered materials
+- [x] Verify ~20% of rooms show glowing circuit traces (spec target: 15–25%)
 
 ---
 
@@ -198,10 +198,10 @@ The generators produce rich configs (shapes, archetypes, vertical elements, wron
 **Problem:** `CorridorGenerator` implements 6 evolution types (widening, narrowing, breathing, branching, terminated, serpentine). It is never called. Rooms connect through simple rectangular doorways. No hallway segments exist between rooms.
 
 **Tasks:**
-- [ ] Integrate corridor generation into room transitions — when transitioning between rooms, generate a corridor segment
-- [ ] Or create corridor-type rooms that appear between standard rooms at intervals
-- [ ] Connect corridor breathing/width animation to bass frequency data
-- [ ] Test that corridors add spatial variety to the exploration loop
+- [x] Integrate corridor generation into room transitions — when transitioning between rooms, generate a corridor segment
+- [x] Or create corridor-type rooms that appear between standard rooms at intervals
+- [x] Connect corridor breathing/width animation to bass frequency data
+- [x] Test that corridors add spatial variety to the exploration loop
 
 ---
 
@@ -212,15 +212,15 @@ The generators produce rich configs (shapes, archetypes, vertical elements, wron
 **Problem:** `VariationGenerator` fully implements 5 escalating levels of portal variations (subtle wallpaper changes → reality breaks). `PortalVariationSystem` calculates variation probabilities. Neither is called from `TransitionSystem.generateRoom()`. The game never escalates into surreal territory.
 
 **Tasks:**
-- [ ] Call `PortalVariationSystem.calculateVariationLevel()` during room transition
-- [ ] Apply `VariationGenerator` changes to room config before rendering
-- [ ] Implement visual rendering for each variation level:
-  - [ ] Level 1: Wallpaper seed change, furniture offset — config changes only
-  - [ ] Level 2: Door target remapping, extra geometry, room stretch — geometry changes
-  - [ ] Level 3: UV flips for backwards text, wrong painting content — material changes
-  - [ ] Level 4: Gravity uniform, Escher geometry, mirror self — shader + physics changes
-  - [ ] Level 5: Reality tear shader, PS1 graphics mode, void room — post-processing changes
-- [ ] Add portal shimmer effect on doorways leading to alternate versions
+- [x] Call `PortalVariationSystem.calculateVariationLevel()` during room transition
+- [x] Apply `VariationGenerator` changes to room config before rendering
+- [x] Implement visual rendering for each variation level:
+  - [x] Level 1: Wallpaper seed change, furniture offset — config changes only
+  - [x] Level 2: Door target remapping, extra geometry, room stretch — geometry changes
+  - [x] Level 3: UV flips for backwards text, wrong painting content — material changes
+  - [x] Level 4: Gravity uniform, Escher geometry, mirror self — shader + physics changes
+  - [x] Level 5: Reality tear shader, PS1 graphics mode, void room — post-processing changes
+- [x] Add portal shimmer effect on doorways leading to alternate versions
 
 ---
 
@@ -236,11 +236,11 @@ The generators produce rich configs (shapes, archetypes, vertical elements, wron
 - Only furniture displacement is partially connected
 
 **Tasks:**
-- [ ] Apply wrongness-skewed vertices to actual wall mesh generation (not just config)
-- [ ] Implement fake door rendering (doors that lead nowhere, sealed shut)
-- [ ] Add ceiling height variance per room segment
-- [ ] Implement shadow direction anomalies (lights casting wrong-direction shadows)
-- [ ] Verify wrongness escalation is visually noticeable at room depths 10, 20, 50
+- [x] Apply wrongness-skewed vertices to actual wall mesh generation (not just config)
+- [x] Implement fake door rendering (doors that lead nowhere, sealed shut)
+- [x] Add ceiling height variance per room segment
+- [x] Implement shadow direction anomalies (lights casting wrong-direction shadows)
+- [x] Verify wrongness escalation is visually noticeable at room depths 10, 20, 50
 
 ---
 
@@ -251,11 +251,11 @@ The generators produce rich configs (shapes, archetypes, vertical elements, wron
 **Problem:** Archetypes (LIVING_ROOM, KITCHEN, OFFICE, BEDROOM, STAIRWELL, PARKING, LAUNDRY, etc.) are selected and configure dimensions, but `Room.tsx` only passes archetype to `Furniture`. Room lighting, materials, ceiling style, floor pattern, and atmosphere don't change per archetype.
 
 **Tasks:**
-- [ ] Map each archetype to distinct floor material (carpet for bedroom, tile for kitchen, concrete for parking)
-- [ ] Map each archetype to distinct lighting style (fluorescent for office, warm for bedroom, bare bulb for stairwell)
-- [ ] Map each archetype to ceiling treatment (drop ceiling for office, exposed pipes for parking, ornate for living room)
-- [ ] Add archetype-specific ambient sound hints (hum for fluorescent, drip for parking)
-- [ ] Verify archetype variety is perceptible when traversing 10 rooms
+- [x] Map each archetype to distinct floor material (carpet for bedroom, tile for kitchen, concrete for parking)
+- [x] Map each archetype to distinct lighting style (fluorescent for office, warm for bedroom, bare bulb for stairwell)
+- [x] Map each archetype to ceiling treatment (drop ceiling for office, exposed pipes for parking, ornate for living room)
+- [x] Add archetype-specific ambient sound hints (hum for fluorescent, drip for parking)
+- [x] Verify archetype variety is perceptible when traversing 10 rooms
 
 ---
 
@@ -271,10 +271,10 @@ return this.placeDoorways(...); // Uses rectangular logic
 ```
 
 **Tasks:**
-- [ ] Implement doorway placement along actual polygon edges
-- [ ] Calculate valid wall segments from shape vertices
-- [ ] Prevent doorway placement on edges shorter than door width
-- [ ] Test with L-shape and hexagon room shapes
+- [x] Implement doorway placement along actual polygon edges
+- [x] Calculate valid wall segments from shape vertices
+- [x] Prevent doorway placement on edges shorter than door width
+- [x] Test with L-shape and hexagon room shapes
 
 ---
 
@@ -285,10 +285,10 @@ return this.placeDoorways(...); // Uses rectangular logic
 **Problem:** `markRoomVisited()` stores the room seed, but `generateRoom()` regenerates the config from scratch using `roomIndex` — it doesn't use the stored seed to reproduce the exact same room. Backtracking creates subtly different rooms each time, breaking immersion.
 
 **Tasks:**
-- [ ] Use stored `visited.seed` when regenerating a previously visited room
-- [ ] Store full room config (or deterministic inputs) for visited rooms, not just seed
-- [ ] Verify entering and re-entering room N produces identical layout
-- [ ] Test: walk forward 5 rooms, walk back 5 rooms, confirm visual consistency
+- [x] Use stored `visited.seed` when regenerating a previously visited room
+- [x] Store full room config (or deterministic inputs) for visited rooms, not just seed
+- [x] Verify entering and re-entering room N produces identical layout
+- [x] Test: walk forward 5 rooms, walk back 5 rooms, confirm visual consistency
 
 ---
 
@@ -299,10 +299,10 @@ return this.placeDoorways(...); // Uses rectangular logic
 **Problem:** Spec calls for keeping 5 rooms in memory (current ±2) with pooling. Current implementation loads one room at a time. No unloading, no geometry disposal, no material cleanup.
 
 **Tasks:**
-- [ ] Implement room pool manager holding current room + adjacent rooms
-- [ ] Dispose Three.js geometries and materials when rooms leave the pool
-- [ ] Pre-generate adjacent rooms for instant transitions
-- [ ] Monitor GPU memory usage to stay within ~20MB budget
+- [x] Implement room pool manager holding current room + adjacent rooms
+- [x] Dispose Three.js geometries and materials when rooms leave the pool
+- [x] Pre-generate adjacent rooms for instant transitions
+- [x] Monitor GPU memory usage to stay within ~20MB budget
 
 ---
 
@@ -313,9 +313,9 @@ return this.placeDoorways(...); // Uses rectangular logic
 **Problem:** Spiral, curved, and irregular polygon shapes generate vertices but wall geometry is created as flat planes between vertex pairs. Curved walls appear as faceted segments. Spiral rooms look like angular corridors.
 
 **Tasks:**
-- [ ] Add tessellation for curved wall segments (subdivide arc into smooth segments)
-- [ ] Implement proper spiral room rendering with continuous curve
-- [ ] Test that complex shapes read as intentionally non-rectangular, not glitchy
+- [x] Add tessellation for curved wall segments (subdivide arc into smooth segments)
+- [x] Implement proper spiral room rendering with continuous curve
+- [x] Test that complex shapes read as intentionally non-rectangular, not glitchy
 
 ---
 
@@ -326,10 +326,10 @@ return this.placeDoorways(...); // Uses rectangular logic
 **Problem:** Room config generates ceiling lighting parameters (type: recessed/fluorescent/bare_bulb/chandelier, flicker probability, color temperature). But no dynamic light objects are created from these configs. `MelancholicLight.tsx` exists but doesn't consume room-level lighting config.
 
 **Tasks:**
-- [ ] Create light objects from room ceiling config (point lights, area lights)
-- [ ] Implement flicker behavior driven by Growl intensity + audio mid-frequency
-- [ ] Connect lighting type to visual appearance (tube geometry for fluorescent, bare mesh for bulb)
-- [ ] Map archetype → lighting preset as a starting point
+- [x] Create light objects from room ceiling config (point lights, area lights)
+- [x] Implement flicker behavior driven by Growl intensity + audio mid-frequency
+- [x] Connect lighting type to visual appearance (tube geometry for fluorescent, bare mesh for bulb)
+- [x] Map archetype → lighting preset as a starting point
 
 ---
 
@@ -340,10 +340,10 @@ return this.placeDoorways(...); // Uses rectangular logic
 **Problem:** It's unclear how walking into a doorway triggers a room transition. `NavigationSystem` handles collision with walls, but the bridge between doorway proximity detection and `TransitionSystem.transitionToRoom()` needs verification.
 
 **Tasks:**
-- [ ] Verify doorway bounding boxes are checked each frame in navigation loop
-- [ ] Ensure crossing the doorway threshold triggers `TransitionSystem.transitionToRoom()`
-- [ ] Add visual feedback when approaching a doorway (glow intensifies, subtle pull)
-- [ ] Test: walk through 10 doors consecutively without getting stuck or skipping rooms
+- [x] Verify doorway bounding boxes are checked each frame in navigation loop
+- [x] Ensure crossing the doorway threshold triggers `TransitionSystem.transitionToRoom()`
+- [x] Add visual feedback when approaching a doorway (glow intensifies, subtle pull)
+- [x] Test: walk through 10 doors consecutively without getting stuck or skipping rooms
 
 ---
 
@@ -356,11 +356,11 @@ return this.placeDoorways(...); // Uses rectangular logic
 **Problem:** The Growl system tracks time and intensity, but the sub-bass drone (30Hz oscillator) may not be perceptible on most speakers and needs volume calibration. Additionally, GrowlSystem effects (shadow anomalies, light flickers, presence feel) need integration testing.
 
 **Tasks:**
-- [ ] Calibrate sub-bass drone frequency and volume for laptop speakers (bump to 50–80Hz)
-- [ ] Add a secondary harmonic or modulated noise layer for perceptibility
-- [ ] Test shadow anomaly rendering at Growl intensity 0.3, 0.6, 0.9
-- [ ] Verify camera shake / FOV distortion scales correctly
-- [ ] Test with simulated timestamps (localStorage override) at hour 2, 6, 12, 24
+- [x] Calibrate sub-bass drone frequency and volume for laptop speakers (bump to 50–80Hz)
+- [x] Add a secondary harmonic or modulated noise layer for perceptibility
+- [x] Test shadow anomaly rendering at Growl intensity 0.3, 0.6, 0.9
+- [x] Verify camera shake / FOV distortion scales correctly
+- [x] Test with simulated timestamps (localStorage override) at hour 2, 6, 12, 24
 
 ---
 
@@ -371,10 +371,10 @@ return this.placeDoorways(...); // Uses rectangular logic
 **Problem:** Glitch effects currently trigger on audio transients only. Spec says glitches should also trigger from time-based chance scaled by Growl intensity. Without audio playing, no glitches ever occur — breaking the horror atmosphere.
 
 **Tasks:**
-- [ ] Add time-based random glitch trigger in `GlitchSystem` scaled by Growl intensity
-- [ ] Implement Growl-driven ambient glitch probability: `baseChance * growlIntensity`
-- [ ] Ensure glitches can occur even without audio input
-- [ ] Test: let site sit for simulated 12 hours with no audio — glitches should appear
+- [x] Add time-based random glitch trigger in `GlitchSystem` scaled by Growl intensity
+- [x] Implement Growl-driven ambient glitch probability: `baseChance * growlIntensity`
+- [x] Ensure glitches can occur even without audio input
+- [x] Test: let site sit for simulated 12 hours with no audio — glitches should appear
 
 ---
 
@@ -385,11 +385,11 @@ return this.placeDoorways(...); // Uses rectangular logic
 **Problem:** Only basic screen tear is implemented. Missing: RGB channel separation intensity scaling, pixel dissolve/dithering, geometry distortion (vertex jitter), and "reality break" full-screen effect.
 
 **Tasks:**
-- [ ] Implement RGB channel split with intensity proportional to transient + Growl
-- [ ] Add pixel dissolve effect (posterize + dither at high Growl)
-- [ ] Implement geometry glitch (vertex jitter in world space, requires A1 fix first)
-- [ ] Create "reality break" full-screen inversion/distortion for Growl > 0.8
-- [ ] Add post-processing pipeline integration for screen-space glitches
+- [x] Implement RGB channel split with intensity proportional to transient + Growl
+- [x] Add pixel dissolve effect (posterize + dither at high Growl)
+- [x] Implement geometry glitch (vertex jitter in world space, requires A1 fix first)
+- [x] Create "reality break" full-screen inversion/distortion for Growl > 0.8
+- [x] Add post-processing pipeline integration for screen-space glitches
 
 ---
 
@@ -402,8 +402,8 @@ return this.placeDoorways(...); // Uses rectangular logic
 **Problem:** `minDecibels = -90`, `maxDecibels = -10` creates an 80dB range. Quiet passages map to near-zero; loud passages compress. Reduces dynamic range of visual response.
 
 **Tasks:**
-- [ ] Test with `-70` to `-20` range for more usable dynamic range
-- [ ] Consider auto-gain normalization based on recent peak levels
+- [x] Test with `-70` to `-20` range for more usable dynamic range
+- [x] Consider auto-gain normalization based on recent peak levels
 
 ---
 
@@ -414,8 +414,8 @@ return this.placeDoorways(...); // Uses rectangular logic
 **Problem:** AudioContext created without explicit sample rate. Frequency band calculations assume standard rates. Different devices may map bass/mid/high bands incorrectly.
 
 **Tasks:**
-- [ ] Read `audioContext.sampleRate` and log it
-- [ ] Verify frequency band bin calculations use actual sample rate (not assumed 44.1kHz)
+- [x] Read `audioContext.sampleRate` and log it
+- [x] Verify frequency band bin calculations use actual sample rate (not assumed 44.1kHz)
 
 ---
 
@@ -426,9 +426,9 @@ return this.placeDoorways(...); // Uses rectangular logic
 **Problem:** Energy smoothing happens after transient check. Sudden audio drops can trigger false transients. Decay behavior could be more robust.
 
 **Tasks:**
-- [ ] Smooth energy before comparing to threshold
-- [ ] Add minimum interval between transient triggers (debounce ~50ms)
-- [ ] Test with music that has clear vs. ambiguous transients
+- [x] Smooth energy before comparing to threshold
+- [x] Add minimum interval between transient triggers (debounce ~50ms)
+- [x] Test with music that has clear vs. ambiguous transients
 
 ---
 
@@ -439,9 +439,9 @@ return this.placeDoorways(...); // Uses rectangular logic
 **Problem:** FPS-based quality adaptation exists but thresholds haven't been tested across hardware. Could downgrade quality unnecessarily on capable hardware or fail to downgrade on weak hardware.
 
 **Tasks:**
-- [ ] Test quality tier thresholds on low-end hardware (integrated GPU)
-- [ ] Test on high-refresh monitors (144Hz) — ensure tier doesn't drop from higher target FPS
-- [ ] Add hysteresis to prevent quality tier oscillation
+- [x] Test quality tier thresholds on low-end hardware (integrated GPU)
+- [x] Test on high-refresh monitors (144Hz) — ensure tier doesn't drop from higher target FPS
+- [x] Add hysteresis to prevent quality tier oscillation
 
 ---
 

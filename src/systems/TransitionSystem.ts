@@ -13,6 +13,8 @@ import * as THREE from 'three';
 import type { DoorwayPlacement, Wall, RoomConfig } from '../types/room';
 import { RoomGenerator } from '../generators/RoomGenerator';
 import { useAudioStore } from '../store/audioStore';
+import { getPortalVariationSystem } from './PortalVariationSystem';
+import type { VariationState } from './PortalVariationSystem';
 
 // ============================================
 // Types and Interfaces
@@ -80,6 +82,7 @@ export interface VisitedRoom {
   seed: number;
   visitedAt: number;      // Timestamp
   entryDoorway: DoorwayPlacement;
+  config: RoomConfig;     // Full config for exact reproduction on revisit
 }
 
 // ============================================
@@ -107,6 +110,7 @@ export class TransitionSystem {
   private visitedRooms: Map<number, VisitedRoom>;
   private currentTransition: TransitionData | null = null;
   private transitionCallback: ((toRoom: RoomConfig, entryWall: Wall) => void) | null = null;
+  private lastVariationState: VariationState | null = null;
 
   // Reusable vectors for calculations
   private _vector1 = new THREE.Vector3();
@@ -126,30 +130,58 @@ export class TransitionSystem {
    * Generate or retrieve a room configuration for a transition.
    * If the room was already visited, returns the same config for consistency.
    * Otherwise generates a new procedurally unique room.
+   * Applies portal variations based on depth and Growl intensity.
    */
-  generateRoom(targetRoomIndex: number, entryWall: Wall | null = null): RoomConfig {
-    // Check if this room was already visited
+  generateRoom(targetRoomIndex: number, entryWall: Wall | null = null, fromRoomIndex?: number): RoomConfig {
+    // Check if this room was already visited — return exact stored config
     const visited = this.visitedRooms.get(targetRoomIndex);
 
     if (visited) {
-      // Regenerate from stored seed for consistency
-      return this.generator.generateConfig(targetRoomIndex, entryWall);
+      // Return the stored config verbatim for backtracking consistency.
+      // This ensures re-entering a room produces an identical layout.
+      return visited.config;
     }
 
     // Generate new room
-    const config = this.generator.generateConfig(targetRoomIndex, entryWall);
+    let config: RoomConfig = this.generator.generateConfig(targetRoomIndex, entryWall);
+
+    // Apply portal variation system — calculate and apply variation to config
+    const variationSystem = getPortalVariationSystem();
+    variationSystem.initialize();
+
+    const variationState = variationSystem.processPortalTransition(
+      fromRoomIndex ?? 0,
+      targetRoomIndex,
+      targetRoomIndex // depth = roomIndex (distance from origin)
+    );
+
+    // Store variation state on the transition system for doorway shimmer access
+    this.lastVariationState = variationState;
+
+    // Apply variation changes to room config
+    if (variationState.variation) {
+      config = variationSystem.applyVariation(config, variationState.variation);
+      // Store variation metadata on config for rendering components
+      (config as RoomConfig & { variationLevel?: number }).variationLevel =
+        variationState.variationLevel;
+      (config as RoomConfig & { variationChanges?: unknown[] }).variationChanges =
+        variationState.variation.changes;
+    }
+
     return config;
   }
 
   /**
    * Store a visited room for backtracking consistency.
+   * Stores the full RoomConfig so revisiting produces an identical layout.
    */
-  markRoomVisited(roomIndex: number, entryDoorway: DoorwayPlacement): void {
+  markRoomVisited(roomIndex: number, entryDoorway: DoorwayPlacement, config: RoomConfig): void {
     const visited: VisitedRoom = {
       roomIndex,
-      seed: this.generator.generateConfig(roomIndex, null).seed,
+      seed: config.seed,
       visitedAt: Date.now(),
       entryDoorway,
+      config,
     };
     this.visitedRooms.set(roomIndex, visited);
   }
@@ -215,7 +247,7 @@ export class TransitionSystem {
 
     // Audio sync: sync to transient if available
     let audioSync = false;
-    if (audioLevels?.transient) {
+    if (audioLevels && audioLevels.transientIntensity > 0.1) {
       audioSync = true;
       duration = THREE.MathUtils.lerp(duration, duration * 0.7, audioLevels.bass);
     }
@@ -416,14 +448,16 @@ export class TransitionSystem {
       bass: audioState.bass,
       mid: audioState.mid,
       high: audioState.high,
-      transient: audioState.transient,
+      transient: audioState.transientIntensity > 0.1,
+      transientIntensity: audioState.transientIntensity,
     };
 
-    // Generate target room
-    const toRoom = this.generateRoom(toRoomIndex, trigger.entryWall);
+    // Generate target room with variation system integration
+    const fromRoomIndex = fromRoom.index;
+    const toRoom = this.generateRoom(toRoomIndex, trigger.entryWall, fromRoomIndex);
 
-    // Mark as visited
-    this.markRoomVisited(toRoomIndex, trigger.doorway);
+    // Mark as visited (stores full config for backtracking consistency)
+    this.markRoomVisited(toRoomIndex, trigger.doorway, toRoom);
 
     // Select transition effect
     const roomDepth = toRoomIndex;
@@ -498,6 +532,14 @@ export class TransitionSystem {
    */
   isTransitioning(): boolean {
     return this.currentTransition !== null;
+  }
+
+  /**
+   * Get the last variation state computed during room generation.
+   * Used by doorway rendering to apply shimmer effects.
+   */
+  getLastVariationState(): VariationState | null {
+    return this.lastVariationState;
   }
 
   /**

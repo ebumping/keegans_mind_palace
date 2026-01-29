@@ -285,6 +285,46 @@ function AudioLevelIndicator() {
 }
 
 // ============================================
+// Stream Lost Notification
+// ============================================
+
+function StreamLostNotification() {
+  const streamLost = useAudioStore((state) => state.streamLost);
+  const setStreamLost = useAudioStore((state) => state.setStreamLost);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    if (streamLost) {
+      setVisible(true);
+      // Auto-dismiss after 4 seconds
+      const timer = setTimeout(() => {
+        setVisible(false);
+        setStreamLost(false);
+      }, 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [streamLost, setStreamLost]);
+
+  if (!visible) return null;
+
+  return (
+    <div className="fixed top-16 right-4 z-30 px-4 py-2.5 rounded-lg bg-[#1a1834]/90 backdrop-blur-sm border border-[#c792f5]/40 shadow-lg shadow-[#c792f5]/10 animate-[fadeIn_0.3s_ease-out]">
+      <div className="flex items-center gap-2.5">
+        <svg className="w-4 h-4 text-[#c792f5]/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M18.364 5.636a9 9 0 11-12.728 0M12 9v4m0 4h.01"
+          />
+        </svg>
+        <span className="text-xs font-mono text-white/70">Audio source lost — switched to demo mode</span>
+      </div>
+    </div>
+  );
+}
+
+// ============================================
 // Navigation Hints
 // ============================================
 
@@ -572,6 +612,9 @@ export function Controls({ onFirstMovement, enableTouchControls = false }: Contr
 
       {/* Mobile touch controls */}
       <MobileTouchControls enabled={enableTouchControls} />
+
+      {/* Stream lost notification */}
+      <StreamLostNotification />
 
       {/* Top right controls */}
       <div className="fixed top-4 right-4 z-20 flex items-center gap-3">

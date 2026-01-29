@@ -39,6 +39,7 @@ export interface GeneratedDoorway {
   materials: THREE.Material[];
   geometries: THREE.BufferGeometry[];
   setOpenAmount: (amount: number) => void;
+  setShimmer: (intensity: number, color: THREE.Color) => void;
   update: (audioLevels: AudioLevelsInput, delta: number, time: number) => void;
   dispose: () => void;
 }
@@ -148,10 +149,17 @@ export class DoorwayGenerator {
         targetOpenAmount = Math.max(0, Math.min(1, amount));
       },
 
+      setShimmer(intensity: number, color: THREE.Color) {
+        if (portalMaterial && portalMaterial.uniforms) {
+          portalMaterial.uniforms.u_shimmerIntensity.value = intensity;
+          portalMaterial.uniforms.u_shimmerColor.value.copy(color);
+        }
+      },
+
       update(audioLevels: AudioLevelsInput, delta: number, time: number) {
         // Calculate target glow intensity based on audio
         const bassBoost = 1 + audioLevels.bass * 0.5;
-        const transientBoost = audioLevels.transient ? 1.5 : 1.0;
+        const transientBoost = 1.0 + audioLevels.transientIntensity * 0.5;
         const targetIntensity =
           config.geometry.glowIntensity * bassBoost * transientBoost;
 
@@ -180,14 +188,14 @@ export class DoorwayGenerator {
           portalMaterial.uniforms.u_bass.value = audioLevels.bass;
           portalMaterial.uniforms.u_mid.value = audioLevels.mid;
           portalMaterial.uniforms.u_high.value = audioLevels.high;
-          portalMaterial.uniforms.u_transient.value = audioLevels.transient ? 1.0 : 0.0;
+          portalMaterial.uniforms.u_transient.value = audioLevels.transientIntensity;
         }
 
         // Audio-reactive door opening
         // Mid frequencies cause subtle door movement (creepy creaking effect)
         const midInfluence = audioLevels.mid * 0.15;
         // Transients can trigger sudden partial opening/closing
-        const transientInfluence = audioLevels.transient ? audioLevels.transientIntensity * 0.2 : 0;
+        const transientInfluence = audioLevels.transientIntensity * 0.2;
 
         // Calculate audio-reactive open amount modifier
         audioReactiveOpen = THREE.MathUtils.lerp(
@@ -697,6 +705,8 @@ export class DoorwayGenerator {
         u_glowColor: { value: new THREE.Color(geometry.glowColor) },
         u_secondaryColor: { value: new THREE.Color(COLORS.secondary) },
         u_backgroundColor: { value: new THREE.Color(COLORS.background) },
+        u_shimmerIntensity: { value: 0.0 },
+        u_shimmerColor: { value: new THREE.Color(0x000000) },
       },
       vertexShader: `
         varying vec2 vUv;
@@ -714,6 +724,8 @@ export class DoorwayGenerator {
         uniform vec3 u_glowColor;
         uniform vec3 u_secondaryColor;
         uniform vec3 u_backgroundColor;
+        uniform float u_shimmerIntensity;
+        uniform vec3 u_shimmerColor;
 
         varying vec2 vUv;
 
@@ -761,6 +773,21 @@ export class DoorwayGenerator {
           color = mix(color, u_glowColor, edgeGlow * (0.3 + u_mid * 0.5));
           color = mix(color, u_secondaryColor, swirl * 0.1 * (1.0 + u_high));
 
+          // Portal shimmer effect for variation-level doorways
+          if (u_shimmerIntensity > 0.0) {
+            // Shimmer edge ring that pulses
+            float shimmerRing = smoothstep(0.5, 0.35, dist) - smoothstep(0.4, 0.2, dist);
+            float shimmerPulse = 0.5 + 0.5 * sin(u_time * 4.0 + angle * 5.0);
+            float shimmerNoise = noise(uv * 8.0 + u_time * 1.5);
+            float shimmer = shimmerRing * shimmerPulse * u_shimmerIntensity;
+            shimmer += shimmerNoise * u_shimmerIntensity * 0.2 * edgeGlow;
+
+            // Mix shimmer color
+            color = mix(color, u_shimmerColor, shimmer * 0.7);
+            // Boost edge glow with shimmer
+            edgeGlow += shimmer * 0.3;
+          }
+
           // Add noise texture
           color += vec3(n * 0.05);
 
@@ -771,8 +798,9 @@ export class DoorwayGenerator {
           float vignette = smoothstep(0.0, 0.4, dist);
           color *= 0.3 + vignette * 0.7;
 
-          // Alpha based on edge proximity
-          float alpha = outerGlow + edgeGlow * 0.7;
+          // Alpha based on edge proximity, boosted by shimmer
+          float shimmerAlphaBoost = u_shimmerIntensity * 0.3;
+          float alpha = outerGlow + edgeGlow * 0.7 + shimmerAlphaBoost;
 
           gl_FragColor = vec4(color, alpha);
         }
@@ -789,21 +817,42 @@ export class DoorwayGenerator {
   }
 
   /**
-   * Calculate world position and rotation based on wall placement
+   * Calculate world position and rotation based on wall placement.
+   * For polygon-edge doorways (non-rectangular shapes), uses the edge
+   * start/end points to compute position along the actual polygon edge.
    */
   private calculateWorldTransform(config: DoorwayConfig): {
     position: THREE.Vector3;
     rotation: THREE.Euler;
   } {
     const { placement, roomDimensions } = config;
-    const { wall, position: wallPosition } = placement;
-    const { width, depth } = roomDimensions;
+    const { wall, position: wallPosition, edgeStart, edgeEnd } = placement;
 
+    // Polygon-edge placement: position along the actual edge geometry
+    if (edgeStart && edgeEnd) {
+      // Interpolate position along edge
+      const x = edgeStart.x + (edgeEnd.x - edgeStart.x) * wallPosition;
+      const z = edgeStart.y + (edgeEnd.y - edgeStart.y) * wallPosition;
+
+      // Calculate rotation to face inward (perpendicular to edge)
+      const dx = edgeEnd.x - edgeStart.x;
+      const dy = edgeEnd.y - edgeStart.y;
+      const edgeAngle = Math.atan2(dy, dx);
+      // Rotate 90° from edge direction to face inward
+      const rotationY = -edgeAngle + Math.PI / 2;
+
+      return {
+        position: new THREE.Vector3(x, 0, z),
+        rotation: new THREE.Euler(0, rotationY, 0),
+      };
+    }
+
+    // Rectangular wall placement (original logic)
+    const { width, depth } = roomDimensions;
     let x = 0;
     let z = 0;
     let rotationY = 0;
 
-    // Calculate position based on wall
     switch (wall) {
       case 'north':
         x = (wallPosition - 0.5) * width;
