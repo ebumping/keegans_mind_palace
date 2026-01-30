@@ -15,7 +15,7 @@ import * as THREE from 'three';
 import { useAudioSmooth } from '../store/audioStore';
 import { useGrowlIntensity } from '../store/timeStore';
 import { VerticalElementType } from '../types/room';
-import type { VerticalElement, RoomDimensions, Point2D } from '../types/room';
+import type { VerticalElement, RoomDimensions } from '../types/room';
 import { getCollisionManager } from '../systems/CollisionManager';
 
 // Material palette for vertical surfaces
@@ -49,7 +49,7 @@ interface SingleVerticalElementProps {
   roomDimensions: RoomDimensions;
 }
 
-function SingleVerticalElement({ element, elementId, roomDimensions }: SingleVerticalElementProps) {
+function SingleVerticalElement({ element, elementId }: SingleVerticalElementProps) {
   const groupRef = useRef<THREE.Group>(null);
   const floorRef = useRef<THREE.Mesh>(null);
   const stateRef = useRef({ time: 0 });
@@ -226,8 +226,7 @@ function SingleVerticalElement({ element, elementId, roomDimensions }: SingleVer
           midY + ny * offset
         );
         // Rotate vertices around the midpoint
-        const rotMatrix = new THREE.Matrix4().makeRotationY(-angle);
-        // For simplicity, we don't rotate individual step geometry here;
+            // For simplicity, we don't rotate individual step geometry here;
         // the group rotation handles alignment
         geometries.push(step);
       }
@@ -259,8 +258,6 @@ function SingleVerticalElement({ element, elementId, roomDimensions }: SingleVer
       minZ = Math.min(minZ, v.y);
       maxZ = Math.max(maxZ, v.y);
     }
-
-    const absHeight = Math.abs(element.heightDelta);
 
     if (element.type === VerticalElementType.PIT || element.type === VerticalElementType.SHAFT) {
       // Pit/shaft: collision walls around the perimeter to prevent falling in
@@ -296,7 +293,7 @@ function SingleVerticalElement({ element, elementId, roomDimensions }: SingleVer
     stateRef.current.time += delta;
 
     const t = stateRef.current.time;
-    const bass = audioSmooth.bass;
+    const bass = audioSmooth.bassSmooth;
 
     // Subtle vertical breathing on raised/sunken elements
     if (element.type === VerticalElementType.SUNKEN || element.type === VerticalElementType.RAISED) {
@@ -317,7 +314,7 @@ function SingleVerticalElement({ element, elementId, roomDimensions }: SingleVer
     if (element.type === VerticalElementType.SHAFT && floorRef.current) {
       const mat = floorRef.current.material as THREE.MeshStandardMaterial;
       if (mat.emissive) {
-        const flicker = 0.1 + audioSmooth.high * 0.3 + Math.random() * 0.05 * growlIntensity;
+        const flicker = 0.1 + audioSmooth.highSmooth * 0.3 + Math.random() * 0.05 * growlIntensity;
         mat.emissiveIntensity = flicker;
       }
     }
@@ -450,7 +447,7 @@ function mergeBufferGeometries(geometries: THREE.BufferGeometry[]): THREE.Buffer
     // Copy indices
     if (idx) {
       for (let i = 0; i < idx.count; i++) {
-        indices[indexOffset + i] = idx.getComponent(i) + vertexOffset;
+        indices[indexOffset + i] = idx.getX(i) + vertexOffset;
       }
       indexOffset += idx.count;
     } else {
@@ -488,7 +485,6 @@ export function VerticalElements({
   dimensions,
   verticalElements,
   roomIndex,
-  seed,
   enabled = true,
 }: VerticalElementsProps) {
   if (!enabled || verticalElements.length === 0) return null;

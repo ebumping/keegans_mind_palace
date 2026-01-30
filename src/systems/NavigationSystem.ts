@@ -30,7 +30,6 @@ import {
 export interface MovementConfig {
   // Base speeds (units per second)
   walkSpeed: number;
-  sprintSpeed: number;
   strafeSpeed: number;
   backwardSpeedMultiplier: number; // Asymmetric traversal - backward feels slower
 
@@ -46,6 +45,10 @@ export interface MovementConfig {
   playerHeight: number; // Eye level
   playerRadius: number; // Collision capsule radius
   capsuleHeight: number; // Full capsule height
+
+  // Jump physics
+  jumpForce: number; // Initial upward velocity
+  gravity: number; // Gravity acceleration (negative = down)
 
   // Audio influence (surreal movement)
   audioInfluence: number; // How much audio affects movement (0-0.3)
@@ -69,7 +72,11 @@ export interface MovementState {
   // Input state
   forward: number; // -1 to 1
   strafe: number; // -1 to 1
-  sprinting: boolean;
+
+  // Jump state
+  verticalVelocity: number;
+  isGrounded: boolean;
+  jumpRequested: boolean;
 
   // Status
   isMoving: boolean;
@@ -81,7 +88,7 @@ export interface InputState {
   backward: boolean;
   left: boolean;
   right: boolean;
-  sprint: boolean;
+  jump: boolean;
 
   // Mouse
   mouseDeltaX: number;
@@ -136,7 +143,6 @@ export interface MovementModifiers {
 
 export const DEFAULT_MOVEMENT_CONFIG: MovementConfig = {
   walkSpeed: 3.0,
-  sprintSpeed: 4.5,
   strafeSpeed: 2.5,
   backwardSpeedMultiplier: 0.85, // Backward movement 15% slower (asymmetric traversal)
   acceleration: 15.0,
@@ -146,6 +152,10 @@ export const DEFAULT_MOVEMENT_CONFIG: MovementConfig = {
   playerHeight: 1.7,
   playerRadius: 0.3,
   capsuleHeight: 1.8,
+
+  // Jump physics
+  jumpForce: 5.5, // Initial upward velocity — gives ~1.5m peak height
+  gravity: -15.0, // Gravity acceleration — slightly floaty for surreal feel
 
   // Audio influence defaults
   audioInfluence: 0.15, // 15% movement weight from bass
@@ -169,7 +179,9 @@ export function createMovementState(initialPosition?: THREE.Vector3): MovementSt
     pitch: 0,
     forward: 0,
     strafe: 0,
-    sprinting: false,
+    verticalVelocity: 0,
+    isGrounded: true,
+    jumpRequested: false,
     isMoving: false,
   };
 }
@@ -180,7 +192,7 @@ export function createInputState(): InputState {
     backward: false,
     left: false,
     right: false,
-    sprint: false,
+    jump: false,
     mouseDeltaX: 0,
     mouseDeltaY: 0,
   };
@@ -213,7 +225,10 @@ export function createMovementModifiers(): MovementModifiers {
 export function processMovementInput(state: MovementState, input: InputState): void {
   state.forward = (input.forward ? 1 : 0) - (input.backward ? 1 : 0);
   state.strafe = (input.right ? 1 : 0) - (input.left ? 1 : 0);
-  state.sprinting = input.sprint && state.forward > 0; // Only sprint when moving forward
+  // Jump request — only when grounded
+  if (input.jump && state.isGrounded) {
+    state.jumpRequested = true;
+  }
 }
 
 /**
@@ -268,8 +283,20 @@ export function updateMovement(
   _capsule.height = config.capsuleHeight;
   _capsule.offset.set(0, config.capsuleHeight * 0.5, 0);
 
+  // Handle jump initiation
+  if (state.jumpRequested && state.isGrounded) {
+    state.verticalVelocity = config.jumpForce;
+    state.isGrounded = false;
+    state.jumpRequested = false;
+  }
+
+  // Apply gravity
+  if (!state.isGrounded) {
+    state.verticalVelocity += config.gravity * delta;
+  }
+
   // Calculate base speed with asymmetric traversal
-  let speed = state.sprinting ? config.sprintSpeed : config.walkSpeed;
+  let speed = config.walkSpeed;
 
   // Backward movement is slower (asymmetric traversal - "the path back feels longer")
   if (state.forward < 0) {
@@ -315,8 +342,9 @@ export function updateMovement(
   const smoothFactor = 1 - Math.exp(-accel * delta);
   state.velocity.lerp(_targetVelocity, smoothFactor);
 
-  // Calculate movement delta
+  // Calculate movement delta (horizontal + vertical)
   _movement.copy(state.velocity).multiplyScalar(delta);
+  _movement.y += state.verticalVelocity * delta;
 
   // Calculate new position
   _newPosition.copy(state.position).add(_movement);
@@ -405,6 +433,15 @@ export function updateMovement(
     } else {
       state.position.copy(_newPosition);
     }
+  }
+
+  // Ground clamping — land the player when they fall below floor level
+  if (state.position.y <= 0) {
+    state.position.y = 0;
+    if (state.verticalVelocity < 0) {
+      state.verticalVelocity = 0;
+    }
+    state.isGrounded = true;
   }
 
   // Subtle doorway pull — gently guide player toward doorway center when close
@@ -771,8 +808,8 @@ export interface TouchInputState {
   // Look delta (accumulated per frame)
   lookDeltaX: number;
   lookDeltaY: number;
-  // Sprint button
-  sprint: boolean;
+  // Jump button
+  jump: boolean;
   // Active state
   isActive: boolean;
 }
@@ -783,7 +820,7 @@ export function createTouchInputState(): TouchInputState {
     moveY: 0,
     lookDeltaX: 0,
     lookDeltaY: 0,
-    sprint: false,
+    jump: false,
     isActive: false,
   };
 }
@@ -807,8 +844,8 @@ export class TouchInputManager {
     this.state.isActive = true;
   }
 
-  setSprint(sprinting: boolean): void {
-    this.state.sprint = sprinting;
+  setJump(jumping: boolean): void {
+    this.state.jump = jumping;
   }
 
   getState(): TouchInputState {
@@ -825,7 +862,7 @@ export class TouchInputManager {
     this.state.moveY = 0;
     this.state.lookDeltaX = 0;
     this.state.lookDeltaY = 0;
-    this.state.sprint = false;
+    this.state.jump = false;
   }
 
   isActive(): boolean {
@@ -887,9 +924,8 @@ export class KeyboardInputManager {
       case 'ArrowRight':
         this.state.right = true;
         break;
-      case 'ShiftLeft':
-      case 'ShiftRight':
-        this.state.sprint = true;
+      case 'Space':
+        this.state.jump = true;
         break;
       case 'Space':
         if (!e.repeat) {
@@ -917,9 +953,8 @@ export class KeyboardInputManager {
       case 'ArrowRight':
         this.state.right = false;
         break;
-      case 'ShiftLeft':
-      case 'ShiftRight':
-        this.state.sprint = false;
+      case 'Space':
+        this.state.jump = false;
         break;
     }
   }
@@ -1140,8 +1175,10 @@ export class NavigationSystem {
         this.movementState.forward = -touchState.moveY; // Invert Y for natural joystick feel
       }
 
-      // Touch sprint
-      this.movementState.sprinting = touchState.sprint && this.movementState.forward > 0;
+      // Touch jump
+      if (touchState.jump && this.movementState.isGrounded) {
+        this.movementState.jumpRequested = true;
+      }
 
       // Touch look (apply sensitivity and update yaw/pitch)
       if (Math.abs(touchState.lookDeltaX) > 0.01 || Math.abs(touchState.lookDeltaY) > 0.01) {
@@ -1219,7 +1256,8 @@ export class NavigationSystem {
     );
 
     const position = this.movementState.position.clone();
-    position.y = this.config.playerHeight;
+    // Eye height + vertical offset from jumping
+    position.y = this.config.playerHeight + this.movementState.position.y;
 
     return {
       position,

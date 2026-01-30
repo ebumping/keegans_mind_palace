@@ -217,7 +217,7 @@ export class TransitionSystem {
    */
   selectTransitionEffect(
     roomDepth: number,
-    audioLevels?: { bass: number; mid: number; high: number; transient: boolean }
+    audioLevels?: { bass: number; mid: number; high: number; transient: boolean; transientIntensity: number }
   ): TransitionEffect {
     // Determine if this should be an impossible transition
     const isImpossible =

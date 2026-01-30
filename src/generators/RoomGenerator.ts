@@ -63,7 +63,7 @@ import {
 } from './CircuitryGenerator';
 import { getCorridorGenerator } from './CorridorGenerator';
 import { getCuratedBuilder, type CuratedBuilderFn } from '../rooms/CuratedRoomRegistry';
-import { getCuratedTemplate } from '../rooms/RoomTemplates';
+import { getCuratedTemplate, hasCuratedTemplate } from '../rooms/RoomTemplates';
 
 // Pale-strata color palette
 const COLORS = {
@@ -195,15 +195,29 @@ export class RoomGenerator {
     const wrongnessSystem = getWrongnessSystem();
     const growlIntensity = wrongnessSystem.getGrowlIntensity();
 
-    // Select room archetype based on depth and abnormality
-    const archetype = selectArchetype(roomIndex, abnormality, rng);
+    // ---------------------------------------------------------------
+    // Curated Template Override
+    // Rooms 1+ use hand-crafted templates for guaranteed enclosed geometry.
+    // The template provides dimensions, shape, archetype, floor/ceiling,
+    // and doorways. Wrongness and circuitry are still procedural.
+    // ---------------------------------------------------------------
+    const curatedTemplate = hasCuratedTemplate(roomIndex) ? getCuratedTemplate(roomIndex) : null;
+
+    // Select room archetype — curated templates override
+    const archetype = curatedTemplate
+      ? curatedTemplate.archetype
+      : selectArchetype(roomIndex, abnormality, rng);
     const archetypeGenerator = getArchetypeRoomGenerator();
 
-    // Generate dimensions based on archetype
-    const type = this.getRoomType(rng, abnormality, roomIndex);
+    // Generate dimensions — curated templates override
+    const type = curatedTemplate
+      ? (curatedTemplate.shapeType === RoomShape.RECTANGLE ? RoomType.STANDARD : RoomType.CHAMBER)
+      : this.getRoomType(rng, abnormality, roomIndex);
     let dimensions: RoomDimensions;
 
-    if (archetype !== RoomArchetype.GENERIC) {
+    if (curatedTemplate) {
+      dimensions = { ...curatedTemplate.dimensions };
+    } else if (archetype !== RoomArchetype.GENERIC) {
       dimensions = archetypeGenerator.generateDimensions(archetype, abnormality, rng);
     } else {
       dimensions = this.getRoomDimensions(rng, type, abnormality);
@@ -213,7 +227,16 @@ export class RoomGenerator {
     let corridorData = undefined;
     let shape: RoomShapeConfig;
 
-    if (type === RoomType.CORRIDOR) {
+    if (curatedTemplate) {
+      // Use curated template vertices for the shape
+      shape = {
+        type: curatedTemplate.shapeType,
+        vertices: curatedTemplate.floorVertices,
+        wallCurves: [],
+        heightVariations: [],
+        boundingBox: { ...curatedTemplate.dimensions },
+      };
+    } else if (type === RoomType.CORRIDOR) {
       // Use CorridorGenerator for evolving corridor geometry
       const corridorGen = getCorridorGenerator();
       corridorData = corridorGen.generate(dimensions, roomIndex, abnormality, seed + 4000);
@@ -230,18 +253,26 @@ export class RoomGenerator {
     // Generate wrongness configuration
     const wrongness = generateWrongnessConfig(roomIndex, growlIntensity, seed);
 
-    // Apply wrongness to shape (skew, angle variance)
-    shape = applyWrongnessToShape(shape, wrongness, seed + 5000);
+    // Apply wrongness to shape (skew, angle variance) — only for procedural rooms
+    // Curated templates have intentional geometry that shouldn't be distorted
+    if (!curatedTemplate) {
+      shape = applyWrongnessToShape(shape, wrongness, seed + 5000);
+    }
 
-    // Generate vertical elements
-    const verticalElementGenerator = getVerticalElementGenerator();
-    const verticalElements = verticalElementGenerator.generate(
-      shape,
-      dimensions,
-      roomIndex,
-      abnormality,
-      seed + 3000
-    );
+    // Generate vertical elements — curated templates may provide their own
+    let verticalElements;
+    if (curatedTemplate?.verticalElements) {
+      verticalElements = curatedTemplate.verticalElements;
+    } else {
+      const verticalElementGenerator = getVerticalElementGenerator();
+      verticalElements = verticalElementGenerator.generate(
+        shape,
+        dimensions,
+        roomIndex,
+        abnormality,
+        seed + 3000
+      );
+    }
 
     // Generate circuitry overlay if room qualifies
     let circuitry = undefined;
@@ -253,19 +284,53 @@ export class RoomGenerator {
     }
 
     const complexity = this.getComplexity(type, rng, abnormality);
-    const doorwayCount = this.getDoorwayCount(type, rng);
-    const doorways = this.placeDoorwaysForShape(
-      roomIndex,
-      dimensions,
-      shape,
-      doorwayCount,
-      seed,
-      entryWall
-    );
+
+    // Doorways — curated templates provide explicit doorway definitions
+    let doorways: DoorwayPlacement[];
+    if (curatedTemplate) {
+      doorways = curatedTemplate.doorways.map((cd) => {
+        const wall = this.wallFromAngle(cd.facingAngle);
+        // Convert 2D position to wall-relative position (0-1 along wall length)
+        let wallPos = 0.5; // default center
+        const halfW = dimensions.width / 2;
+        const halfD = dimensions.depth / 2;
+        if (wall === Wall.NORTH || wall === Wall.SOUTH) {
+          wallPos = (cd.position.x + halfW) / dimensions.width;
+        } else {
+          wallPos = (cd.position.y + halfD) / dimensions.depth;
+        }
+        wallPos = Math.max(0.1, Math.min(0.9, wallPos));
+
+        return {
+          wall,
+          position: wallPos,
+          width: cd.width,
+          height: cd.height,
+          leadsTo: cd.leadsTo,
+        };
+      });
+    } else {
+      const doorwayCount = this.getDoorwayCount(type, rng);
+      doorways = this.placeDoorwaysForShape(
+        roomIndex,
+        dimensions,
+        shape,
+        doorwayCount,
+        seed,
+        entryWall
+      );
+    }
+
     const doorwayGeometry = this.getDoorwayGeometry(rng, abnormality);
     const wallFeatures = this.getWallFeatures(rng, abnormality);
-    const floorType = this.getFloorType(rng, abnormality, archetype);
-    const ceilingConfig = this.getCeilingConfig(rng, abnormality, dimensions.height, archetype);
+
+    // Floor and ceiling — curated templates override
+    const floorType = curatedTemplate
+      ? curatedTemplate.floorType
+      : this.getFloorType(rng, abnormality, archetype);
+    const ceilingConfig = curatedTemplate
+      ? curatedTemplate.ceilingConfig
+      : this.getCeilingConfig(rng, abnormality, dimensions.height, archetype);
     const nonEuclidean = this.getNonEuclideanConfig(rng, abnormality);
 
     // Generate fake doors based on wrongness
@@ -293,6 +358,16 @@ export class RoomGenerator {
       corridor: corridorData,
       fakeDoors,
     };
+  }
+
+  /** Convert a facing angle to a Wall enum value */
+  private wallFromAngle(angle: number): Wall {
+    // Normalize to [0, 2PI)
+    const a = ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+    if (a < Math.PI * 0.25 || a >= Math.PI * 1.75) return Wall.NORTH;
+    if (a < Math.PI * 0.75) return Wall.EAST;
+    if (a < Math.PI * 1.25) return Wall.SOUTH;
+    return Wall.WEST;
   }
 
   /**
@@ -489,7 +564,10 @@ export class RoomGenerator {
     geometries.push(fallbackFloorGeom);
     materials.push(fallbackFloorMat);
 
-    if (config.ceilingConfig.isVisible) {
+    // Always generate ceiling — rooms must be fully enclosed.
+    // Even at high abnormality, we use visual effects (transparency, displacement)
+    // rather than removing geometry entirely.
+    {
       const { ceilingMesh, ceilingGeom, ceilingMat } = this.createCeiling(config);
       group.add(ceilingMesh);
       geometries.push(ceilingGeom);
@@ -1020,7 +1098,7 @@ export class RoomGenerator {
       hasLighting: preset ? preset.hasLighting : rng.next() > abnormality * 0.5,
       lightingType: preset ? preset.lightingType : rng.pick(['recessed', 'fluorescent', 'bare_bulb', 'none']),
       hasSkylight: rng.chance(preset ? preset.skylightChance : 0.1),
-      isVisible: !(abnormality > 0.4 && rng.chance(abnormality * 0.3)),
+      isVisible: true, // Always visible — rooms must have ceilings
     };
   }
 

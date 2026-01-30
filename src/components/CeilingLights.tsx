@@ -18,7 +18,7 @@ import * as THREE from 'three';
 import { useAudioSmooth } from '../store/audioStore';
 import { useGrowlIntensity } from '../store/timeStore';
 import { SeededRandom } from '../utils/seededRandom';
-import type { RoomDimensions, CeilingConfig, RoomArchetype } from '../types/room';
+import type { RoomDimensions, CeilingConfig } from '../types/room';
 
 // Lighting preset per archetype — color temperature, intensity, fixture count
 interface LightingPreset {

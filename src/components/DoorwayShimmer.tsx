@@ -16,7 +16,6 @@ import * as THREE from 'three';
 import type { DoorwayPlacement, RoomDimensions } from '../types/room';
 import { useAudioLevels } from '../store/audioStore';
 import {
-  getPortalVariationSystem,
   getShimmerIntensity,
   getShimmerColor,
   useVariationStore,

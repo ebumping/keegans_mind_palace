@@ -21,7 +21,7 @@ import {
   type LiminalMaterialConfig,
   type AudioData,
 } from '../../systems/AudioReactiveSystem';
-import type { CuratedRoom } from '../../types/room';
+// Room type from ../../types/room used at runtime via AudioReactiveSystem
 
 // =============================================================================
 // Palette — warm institutional fluorescent

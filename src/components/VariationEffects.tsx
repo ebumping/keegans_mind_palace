@@ -124,7 +124,7 @@ function LightColorShift({ dimensions, shift }: { dimensions: RoomDimensions; sh
 
 // ===== Level 3: Impossible Shadow =====
 
-function ImpossibleShadow({ dimensions, change }: { dimensions: RoomDimensions; change: VariationChangeRef }) {
+function ImpossibleShadow({ change }: { dimensions: RoomDimensions; change: VariationChangeRef }) {
   const pos = change.sourcePosition as { x: number; y: number; z: number } | undefined;
   if (!pos) return null;
 
@@ -215,7 +215,7 @@ function GravityShiftEffect({ dimensions, direction }: { dimensions: RoomDimensi
     if (!groupRef.current) return;
     // Slowly drift particles in gravity direction
     const speed = 0.3 + audioLevels.bass * 0.5;
-    groupRef.current.children.forEach((child, i) => {
+    groupRef.current.children.forEach((child) => {
       child.position.x += direction.x * delta * speed;
       child.position.y += direction.y * delta * speed * 0.5;
       child.position.z += direction.z * delta * speed;

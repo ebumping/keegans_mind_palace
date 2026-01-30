@@ -19,9 +19,9 @@ import { CollisionDebug } from './debug/CollisionDebug'
 import { DebugOverlay } from './debug/DebugOverlay'
 import { GroundedHint } from './components/UI/GroundedHint'
 import { getWrongnessSystem } from './systems/WrongnessSystem'
-import { getPortalVariationSystem } from './systems/PortalVariationSystem'
 import { getRoomPoolManager, disposeRoomPoolManager } from './systems/RoomPoolManager'
 import { usePerformanceStore, usePerformanceSettings, type PerformanceSettings } from './store/performanceStore'
+import { SettingsPanel, SettingsButton } from './components/UI/SettingsPanel'
 
 // Pale-strata color palette
 const COLORS = {
@@ -235,13 +235,13 @@ function PointerLockOverlay({ isTouchDevice, onEnter }: { isTouchDevice: boolean
           <>
             Left Joystick - Move<br />
             Right Zone - Look Around<br />
-            Center Button - Sprint
+            Center Button - Jump
           </>
         ) : (
           <>
             WASD / Arrow Keys - Move<br />
             Mouse - Look Around<br />
-            Shift - Sprint<br />
+            Space - Jump<br />
             ESC - Release Cursor
           </>
         )}
@@ -485,27 +485,40 @@ function App() {
         onCollisionDebugToggle={handleCollisionDebugToggle}
       />
 
-      {/* Toggle debug panel with Ctrl+Shift+D */}
-      <DebugToggle onToggle={() => setShowDebug(prev => !prev)} />
+      {/* Toggle debug panel with 'G' key, settings with Tab */}
+      <DebugToggle onToggle={() => setShowDebug(prev => !prev)} enabled={audioPermissionGranted} />
+
+      {/* Graphics Settings UI */}
+      <SettingsButton />
+      <SettingsPanel />
     </>
   )
 }
 
 /**
- * Keyboard handler for toggling debug panel.
- * Press Ctrl+Shift+D to show/hide the Growl debug panel.
+ * Keyboard handler for toggling debug panel and settings.
+ * Press 'G' to show/hide the Growl debug panel.
+ * Press 'Tab' to toggle the graphics settings panel.
  */
-function DebugToggle({ onToggle }: { onToggle: () => void }) {
+function DebugToggle({ onToggle, enabled }: { onToggle: () => void; enabled: boolean }) {
+  const toggleSettings = usePerformanceStore((s) => s.toggleSettingsPanel)
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.key === 'D') {
-        e.preventDefault()
+      // Don't intercept keys when menus/modals need keyboard navigation
+      if (!enabled) return
+
+      if (e.key === 'g' || e.key === 'G') {
         onToggle()
+      }
+      if (e.key === 'Tab') {
+        e.preventDefault()
+        toggleSettings()
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onToggle])
+  }, [onToggle, toggleSettings, enabled])
 
   return null
 }

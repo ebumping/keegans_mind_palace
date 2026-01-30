@@ -3,6 +3,7 @@
  *
  * Manages graphics quality tiers for optimal performance across devices.
  * Auto-detects device capabilities and allows manual override.
+ * Supports individual effect toggles for user customization.
  */
 
 import { create } from 'zustand';
@@ -31,6 +32,16 @@ export interface PerformanceSettings {
   // Lights
   maxLights: number;
 }
+
+/** Keys in PerformanceSettings that are boolean toggles */
+export type EffectToggleKey =
+  | 'enablePostProcessing'
+  | 'enableBloom'
+  | 'enableChromaticAberration'
+  | 'enableVignette'
+  | 'enableGlitch'
+  | 'enableShadows'
+  | 'antialias';
 
 const QUALITY_PRESETS: Record<QualityTier, PerformanceSettings> = {
   low: {
@@ -74,22 +85,36 @@ const QUALITY_PRESETS: Record<QualityTier, PerformanceSettings> = {
   },
 };
 
+export { QUALITY_PRESETS };
+
 export interface PerformanceStore {
   tier: QualityTier;
   settings: PerformanceSettings;
   isAutoDetected: boolean;
+  /** Whether the user has manually overridden individual effect settings */
+  hasManualOverrides: boolean;
   fps: number;
   fpsHistory: number[];
   targetFps: number;
   lastTierChangeTime: number;
   consecutiveBelowTarget: number;
   consecutiveAboveTarget: number;
+  /** Whether the settings panel is open */
+  settingsPanelOpen: boolean;
 
   // Actions
   setTier: (tier: QualityTier) => void;
   autoDetect: () => QualityTier;
   updateFps: (fps: number) => void;
   adaptQuality: () => void;
+  /** Toggle a single effect on or off (marks as manual override) */
+  toggleEffect: (key: EffectToggleKey) => void;
+  /** Set a single setting value (marks as manual override) */
+  setSetting: <K extends keyof PerformanceSettings>(key: K, value: PerformanceSettings[K]) => void;
+  /** Open/close the settings panel */
+  setSettingsPanelOpen: (open: boolean) => void;
+  /** Toggle the settings panel */
+  toggleSettingsPanel: () => void;
 }
 
 // Hysteresis constants — adaptQuality is called ~1x/sec from FpsMonitor
@@ -136,11 +161,7 @@ function detectPerformanceTier(): QualityTier {
     const debugInfo = (gl as WebGLRenderingContext).getExtension('WEBGL_debug_renderer_info');
     if (debugInfo) {
       const renderer = (gl as WebGLRenderingContext).getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
-      const vendor = (gl as WebGLRenderingContext).getParameter(debugInfo.UNMASKED_VENDOR_WEBGL);
-
       const rendererLower = renderer.toLowerCase();
-      const vendorLower = vendor.toLowerCase();
-
       // Detect software renderers — always low tier
       const isSoftwareRenderer =
         rendererLower.includes('llvmpipe') ||
@@ -206,20 +227,23 @@ export const usePerformanceStore = create<PerformanceStore>((set, get) => {
 
   return {
     tier: initialTier,
-    settings: QUALITY_PRESETS[initialTier],
+    settings: { ...QUALITY_PRESETS[initialTier] },
     isAutoDetected: true,
+    hasManualOverrides: false,
     fps: 60,
     fpsHistory: [],
     targetFps: initialTargetFps,
     lastTierChangeTime: 0,
     consecutiveBelowTarget: 0,
     consecutiveAboveTarget: 0,
+    settingsPanelOpen: false,
 
     setTier: (tier: QualityTier) => {
       set({
         tier,
-        settings: QUALITY_PRESETS[tier],
+        settings: { ...QUALITY_PRESETS[tier] },
         isAutoDetected: false,
+        hasManualOverrides: false,
         lastTierChangeTime: performance.now(),
         consecutiveBelowTarget: 0,
         consecutiveAboveTarget: 0,
@@ -231,13 +255,56 @@ export const usePerformanceStore = create<PerformanceStore>((set, get) => {
       const tier = detectPerformanceTier();
       set({
         tier,
-        settings: QUALITY_PRESETS[tier],
+        settings: { ...QUALITY_PRESETS[tier] },
         isAutoDetected: true,
+        hasManualOverrides: false,
         lastTierChangeTime: performance.now(),
         consecutiveBelowTarget: 0,
         consecutiveAboveTarget: 0,
       });
       return tier;
+    },
+
+    toggleEffect: (key: EffectToggleKey) => {
+      const state = get();
+      const currentValue = state.settings[key];
+      const newSettings = { ...state.settings, [key]: !currentValue };
+
+      // If toggling on a post-processing effect, ensure post-processing is enabled
+      if (key !== 'enablePostProcessing' && key !== 'antialias' && !currentValue) {
+        newSettings.enablePostProcessing = true;
+      }
+
+      // If disabling all post-processing effects, disable post-processing
+      if (key === 'enablePostProcessing' && currentValue) {
+        newSettings.enableBloom = false;
+        newSettings.enableChromaticAberration = false;
+        newSettings.enableVignette = false;
+        newSettings.enableGlitch = false;
+      }
+
+      set({
+        settings: newSettings,
+        isAutoDetected: false,
+        hasManualOverrides: true,
+      });
+    },
+
+    setSetting: <K extends keyof PerformanceSettings>(key: K, value: PerformanceSettings[K]) => {
+      const state = get();
+      set({
+        settings: { ...state.settings, [key]: value },
+        isAutoDetected: false,
+        hasManualOverrides: true,
+      });
+    },
+
+    setSettingsPanelOpen: (open: boolean) => {
+      set({ settingsPanelOpen: open });
+    },
+
+    toggleSettingsPanel: () => {
+      set((state) => ({ settingsPanelOpen: !state.settingsPanelOpen }));
     },
 
     updateFps: (fps: number) => {
@@ -289,7 +356,7 @@ export const usePerformanceStore = create<PerformanceStore>((set, get) => {
         const newTier = state.tier === 'high' ? 'medium' : 'low';
         set({
           tier: newTier,
-          settings: QUALITY_PRESETS[newTier],
+          settings: { ...QUALITY_PRESETS[newTier] },
           fpsHistory: [],
           lastTierChangeTime: now,
           consecutiveBelowTarget: 0,
@@ -306,7 +373,7 @@ export const usePerformanceStore = create<PerformanceStore>((set, get) => {
         const newTier = state.tier === 'low' ? 'medium' : 'high';
         set({
           tier: newTier,
-          settings: QUALITY_PRESETS[newTier],
+          settings: { ...QUALITY_PRESETS[newTier] },
           fpsHistory: [],
           lastTierChangeTime: now,
           consecutiveBelowTarget: 0,
