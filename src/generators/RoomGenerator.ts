@@ -1353,7 +1353,7 @@ export class RoomGenerator {
 
           const mesh = new THREE.Mesh(geometry, material);
           mesh.position.set(centerX, height / 2, centerY);
-          mesh.rotation.set(0, -angle + Math.PI / 2, 0);
+          mesh.rotation.set(0, -angle, 0);
           mesh.receiveShadow = true;
 
           wallMeshes.push(mesh);
@@ -1460,7 +1460,7 @@ export class RoomGenerator {
 
         const mesh = new THREE.Mesh(geometry, material);
         mesh.position.set(centerX, wallHeight / 2, centerY);
-        mesh.rotation.set(0, -angle + Math.PI / 2, 0);
+        mesh.rotation.set(0, -angle, 0);
         mesh.receiveShadow = true;
 
         meshes.push(mesh);
