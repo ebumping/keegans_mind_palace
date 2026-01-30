@@ -166,7 +166,7 @@ export function Room({
       )}
 
       {/* Wall Paintings */}
-      {roomConfig && (
+      {roomConfig && !roomConfig.isCurated && (
         <Paintings
           dimensions={roomConfig.dimensions}
           roomIndex={roomConfig.index}
@@ -177,7 +177,7 @@ export function Room({
       )}
 
       {/* Sculptures */}
-      {roomConfig && (
+      {roomConfig && !roomConfig.isCurated && (
         <Sculptures
           dimensions={roomConfig.dimensions}
           roomIndex={roomConfig.index}
@@ -189,7 +189,7 @@ export function Room({
       )}
 
       {/* Furniture with Intent */}
-      {roomConfig && (
+      {roomConfig && !roomConfig.isCurated && (
         <Furniture
           dimensions={roomConfig.dimensions}
           roomIndex={roomConfig.index}
@@ -201,7 +201,7 @@ export function Room({
       )}
 
       {/* Vertical Elements - Sunken areas, platforms, pits, shafts */}
-      {roomConfig && roomConfig.verticalElements && roomConfig.verticalElements.length > 0 && (
+      {roomConfig && !roomConfig.isCurated && roomConfig.verticalElements && roomConfig.verticalElements.length > 0 && (
         <VerticalElements
           dimensions={roomConfig.dimensions}
           verticalElements={roomConfig.verticalElements}
@@ -212,7 +212,7 @@ export function Room({
       )}
 
       {/* Circuitry Overlay - Glowing circuit traces on walls/floor */}
-      {roomConfig && roomConfig.circuitry && (
+      {roomConfig && !roomConfig.isCurated && roomConfig.circuitry && (
         <CircuitryOverlay
           dimensions={roomConfig.dimensions}
           circuitry={roomConfig.circuitry}
@@ -223,7 +223,7 @@ export function Room({
       )}
 
       {/* Ceiling Lights - Dynamic fixtures from room config */}
-      {roomConfig && roomConfig.ceilingConfig && (
+      {roomConfig && !roomConfig.isCurated && roomConfig.ceilingConfig && (
         <CeilingLights
           dimensions={roomConfig.dimensions}
           ceilingConfig={roomConfig.ceilingConfig}
@@ -273,7 +273,7 @@ export function Room({
       )}
 
       {/* Fake Doors - Sealed doorways that lead nowhere (wrongness system) */}
-      {roomConfig && roomConfig.fakeDoors && roomConfig.fakeDoors.length > 0 && (
+      {roomConfig && !roomConfig.isCurated && roomConfig.fakeDoors && roomConfig.fakeDoors.length > 0 && (
         <FakeDoors
           fakeDoors={roomConfig.fakeDoors}
           roomDimensions={roomConfig.dimensions}
@@ -283,7 +283,7 @@ export function Room({
       )}
 
       {/* Wrong Shadows - Lights casting shadows from impossible directions */}
-      {roomConfig && roomConfig.wrongness &&
+      {roomConfig && !roomConfig.isCurated && roomConfig.wrongness &&
        roomConfig.wrongness.lightingBehavior === 'wrong_direction' && (
         <WrongShadows
           dimensions={roomConfig.dimensions}

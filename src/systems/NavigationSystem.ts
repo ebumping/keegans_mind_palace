@@ -891,6 +891,11 @@ export class KeyboardInputManager {
       case 'ShiftRight':
         this.state.sprint = true;
         break;
+      case 'Space':
+        if (!e.repeat) {
+          window.dispatchEvent(new CustomEvent('ground-cue'));
+        }
+        break;
     }
   }
 

@@ -25,6 +25,56 @@ export interface ControlsProps {
 
 function AudioSourceButton({ currentSource }: { currentSource: AudioSource }) {
   const [isOpen, setIsOpen] = useState(false);
+  const audioCaptureInstance = useAudioStore((state) => state.audioCaptureInstance);
+  const setCapturing = useAudioStore((state) => state.setCapturing);
+  const setAudioCaptureInstance = useAudioStore((state) => state.setAudioCaptureInstance);
+
+  const handleSourceChange = useCallback(async (source: AudioSource) => {
+    setIsOpen(false);
+    if (source === currentSource) return;
+
+    // Stop existing capture if switching away from a live source
+    if (audioCaptureInstance) {
+      audioCaptureInstance.stopCapture();
+    }
+
+    if (source === 'demo') {
+      // Demo mode: no capture needed, just update store
+      setCapturing(true, 'demo');
+      return;
+    }
+
+    // For desktop/microphone, create a new AudioCapture instance
+    try {
+      const { AudioCapture } = await import('../../core/AudioCapture');
+      const capture = new AudioCapture({
+        onStreamStart: (src) => {
+          useAudioStore.getState().setCapturing(true, src);
+        },
+        onStreamEnd: () => {
+          useAudioStore.getState().setCapturing(false);
+        },
+        onError: (error) => {
+          console.error('Audio capture error:', error);
+          // Fall back to demo mode on error
+          useAudioStore.getState().setCapturing(true, 'demo');
+          useAudioStore.getState().setStreamLost(true);
+        },
+      });
+
+      setAudioCaptureInstance(capture);
+
+      if (source === 'desktop') {
+        await capture.startDesktopCapture();
+      } else if (source === 'microphone') {
+        await capture.startMicrophoneCapture();
+      }
+    } catch (error) {
+      console.error('Failed to switch audio source:', error);
+      // Fall back to demo mode
+      setCapturing(true, 'demo');
+    }
+  }, [currentSource, audioCaptureInstance, setCapturing, setAudioCaptureInstance]);
 
   const getSourceLabel = (source: AudioSource): string => {
     switch (source) {
@@ -121,7 +171,7 @@ function AudioSourceButton({ currentSource }: { currentSource: AudioSource }) {
             </div>
             <div className="py-1">
               <button
-                onClick={() => setIsOpen(false)}
+                onClick={() => handleSourceChange('desktop')}
                 disabled={currentSource === 'desktop'}
                 className="w-full px-3 py-2 text-left text-sm font-mono text-[#c792f5] hover:bg-[#c792f5]/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
               >
@@ -136,7 +186,7 @@ function AudioSourceButton({ currentSource }: { currentSource: AudioSource }) {
                 Desktop Audio
               </button>
               <button
-                onClick={() => setIsOpen(false)}
+                onClick={() => handleSourceChange('microphone')}
                 disabled={currentSource === 'microphone'}
                 className="w-full px-3 py-2 text-left text-sm font-mono text-[#8eecf5] hover:bg-[#8eecf5]/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
               >
@@ -151,7 +201,7 @@ function AudioSourceButton({ currentSource }: { currentSource: AudioSource }) {
                 Microphone
               </button>
               <button
-                onClick={() => setIsOpen(false)}
+                onClick={() => handleSourceChange('demo')}
                 disabled={currentSource === 'demo'}
                 className="w-full px-3 py-2 text-left text-sm font-mono text-white/60 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
               >
