@@ -14,8 +14,10 @@ import { getNavigationSystem, calculateEntryPosition, calculateEntryYaw, getOppo
 import { useTransition } from './hooks/useTransition'
 import type { RoomConfig, DoorwayPlacement } from './types/room'
 import { getTransitionSystem } from './systems/TransitionSystem'
+import { TransitionEffect, CameraTransitionEffect } from './components/TransitionEffect'
 import { CollisionDebug } from './debug/CollisionDebug'
 import { DebugOverlay } from './debug/DebugOverlay'
+import { GroundedHint } from './components/UI/GroundedHint'
 import { getWrongnessSystem } from './systems/WrongnessSystem'
 import { getRoomPoolManager, disposeRoomPoolManager } from './systems/RoomPoolManager'
 import { usePerformanceStore, usePerformanceSettings, type PerformanceSettings } from './store/performanceStore'
@@ -352,8 +354,6 @@ function Scene({ showCollisionDebug = false }: SceneProps) {
       {/* Reduced fog density for larger rooms */}
       <fogExp2 attach="fog" args={[COLORS.fogColor, 0.015]} />
 
-      {/* Minimal fallback lighting - dynamic lights handled by RoomAtmosphere */}
-      <ambientLight intensity={0.5} />
 
       {/* FPS Monitor for adaptive quality */}
       <FpsMonitor />
@@ -374,8 +374,8 @@ function Scene({ showCollisionDebug = false }: SceneProps) {
       <CollisionDebug enabled={showCollisionDebug} />
 
       {/* Transition effects */}
-      {/*<TransitionEffect enabled={true} />*/}
-      {/*<CameraTransitionEffect enabled={true} baseFOV={75} />*/}
+      <TransitionEffect enabled={true} />
+      <CameraTransitionEffect enabled={true} baseFOV={75} />
 
       {/* First-person navigation controller with transition support */}
       <NavigationController roomConfig={roomConfig} onTransition={handleTransition} />
@@ -472,6 +472,9 @@ function App() {
           enableTouchControls={isTouchDevice && mobileEntered}
         />
       )}
+
+      {/* Grounded hint overlay (Space key feedback) */}
+      <GroundedHint />
 
       {/* Pointer lock overlay with instructions */}
       <PointerLockOverlay isTouchDevice={isTouchDevice} onEnter={handleMobileEnter} />

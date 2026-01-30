@@ -33,6 +33,8 @@ import type {
   RoomShapeConfig,
   Point2D,
   WrongnessConfig,
+  CuratedRoom,
+  RoomPalette,
 } from '../types/room';
 import {
   createLiminalMaterial,
@@ -60,6 +62,7 @@ import {
   shouldSpawnCircuitry,
 } from './CircuitryGenerator';
 import { getCorridorGenerator } from './CorridorGenerator';
+import { getCuratedBuilder, type CuratedBuilderFn } from '../rooms/CuratedRoomRegistry';
 import { getCuratedTemplate, hasCuratedTemplate } from '../rooms/RoomTemplates';
 
 // Pale-strata color palette
@@ -649,11 +652,195 @@ export class RoomGenerator {
   }
 
   /**
-   * Convenience method to generate a room directly from index
+   * Convenience method to generate a room directly from index.
+   *
+   * Branching logic for curated rooms:
+   * - If a curated template exists AND has a registered builder → delegate to wrapCuratedRoom()
+   * - If a curated template exists but NO builder → generate procedurally, then apply palette
+   * - If no template (room 0) → fully procedural (existing behavior)
    */
   generate(roomIndex: number, entryWall: Wall | null = null): GeneratedRoom {
+    const curatedTemplate = getCuratedTemplate(roomIndex);
+
+    if (curatedTemplate) {
+      const builder = getCuratedBuilder(curatedTemplate.templateId);
+
+      if (builder) {
+        // Curated room with a full builder — delegate entirely
+        return this.wrapCuratedRoom(curatedTemplate, builder, roomIndex, entryWall);
+      }
+
+      // Template exists but no builder — procedural generation with curated palette
+      const config = this.generateConfig(roomIndex, entryWall);
+      const room = this.generateRoom(config);
+      this.applyRoomPalette(room, curatedTemplate.palette);
+      return room;
+    }
+
+    // No template (room 0) — fully procedural
     const config = this.generateConfig(roomIndex, entryWall);
     return this.generateRoom(config);
+  }
+
+  // ============================================
+  // Curated room methods (stubs for sections 3.4 / 3.5)
+  // ============================================
+
+  /**
+   * Wrap a curated room builder result into the GeneratedRoom interface.
+   * Calls the builder function, synthesizes a minimal RoomConfig, and
+   * converts CuratedDoorway[] into DoorwayPlacement[] for NavigationSystem.
+   */
+  private wrapCuratedRoom(
+    template: CuratedRoom,
+    builder: CuratedBuilderFn,
+    roomIndex: number,
+    _entryWall: Wall | null
+  ): GeneratedRoom {
+    const seed = getRoomSeed(roomIndex, this.options.baseSeed);
+
+    // Call the curated builder to get the Three.js scene
+    const result = builder(seed);
+
+    // Convert CuratedDoorway[] → DoorwayPlacement[] for NavigationSystem
+    const doorways = this.convertCuratedDoorways(template);
+
+    // Synthesize a minimal RoomConfig so downstream systems
+    // (NavigationSystem, CollisionManager, Room.tsx) work correctly
+    const config: RoomConfig = {
+      index: roomIndex,
+      seed,
+      type: RoomType.STANDARD,
+      dimensions: template.dimensions,
+      doorways,
+      doorwayGeometry: {
+        frameThickness: 0.1,
+        archType: 'rectangular',
+        glowColor: COLORS.primary,
+        glowIntensity: 0.5,
+      },
+      wallFeatures: [WallFeature.PLAIN],
+      floorType: template.floorType,
+      ceilingConfig: template.ceilingConfig,
+      nonEuclidean: { enabled: false, interiorScale: 1.0 },
+      abnormality: getAbnormalityFactor(roomIndex),
+      complexity: 1,
+      archetype: template.archetype,
+      verticalElements: template.verticalElements,
+      isCurated: true,
+    };
+
+    // Compute bounding box from the builder's mesh
+    const boundingBox = new THREE.Box3().setFromObject(result.mesh);
+
+    const room: GeneratedRoom = {
+      config,
+      mesh: result.mesh,
+      boundingBox,
+      geometries: result.geometries,
+      materials: result.materials,
+
+      update(audioLevels: AudioLevels, delta: number) {
+        // Forward audio data to the curated builder's update
+        const audioData: AudioData = {
+          bass: audioLevels.bass,
+          mid: audioLevels.mid,
+          high: audioLevels.high,
+          transient: audioLevels.transientIntensity,
+          bassSmooth: audioLevels.bass,
+          midSmooth: audioLevels.mid,
+          highSmooth: audioLevels.high,
+        };
+        result.update(audioData, delta);
+      },
+
+      dispose() {
+        result.dispose();
+      },
+    };
+
+    return room;
+  }
+
+  /**
+   * Convert CuratedDoorway[] from a template into DoorwayPlacement[]
+   * that the NavigationSystem expects.
+   *
+   * CuratedDoorway uses explicit position + facingAngle, while
+   * DoorwayPlacement uses wall + position-along-wall (0–1).
+   */
+  private convertCuratedDoorways(template: CuratedRoom): DoorwayPlacement[] {
+    const { dimensions } = template;
+
+    return template.doorways.map((cd) => {
+      // Determine which wall the doorway sits on from its facingAngle.
+      // facingAngle is the outward-facing direction of the doorway.
+      const wall = this.angleToWall(cd.facingAngle);
+
+      // Compute position as 0–1 along the wall length.
+      // The NavigationSystem maps position=0.5 to the center of the wall.
+      let position: number;
+      if (wall === Wall.NORTH || wall === Wall.SOUTH) {
+        position = (cd.position.x / dimensions.width) + 0.5;
+      } else {
+        // East/West walls run along the depth axis
+        position = (cd.position.y / dimensions.depth) + 0.5;
+      }
+      // Clamp to valid range
+      position = Math.max(0.05, Math.min(0.95, position));
+
+      return {
+        wall,
+        position,
+        width: cd.width,
+        height: cd.height,
+        leadsTo: cd.leadsTo,
+      } as DoorwayPlacement;
+    });
+  }
+
+  /**
+   * Map a facing angle (radians) to the nearest cardinal Wall direction.
+   * 0 = +X (East), π/2 = +Z (South), π = -X (West), 3π/2 = -Z (North)
+   */
+  private angleToWall(angle: number): Wall {
+    // Normalize to [0, 2π)
+    const a = ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+    if (a >= Math.PI * 0.25 && a < Math.PI * 0.75) return Wall.SOUTH;
+    if (a >= Math.PI * 0.75 && a < Math.PI * 1.25) return Wall.WEST;
+    if (a >= Math.PI * 1.25 && a < Math.PI * 1.75) return Wall.NORTH;
+    return Wall.EAST;
+  }
+
+  /**
+   * Apply a curated palette's colors to a procedurally generated room's materials.
+   * Sets shader uniforms on all liminal materials in the room so that procedural
+   * geometry uses the curated room's color identity.
+   *
+   * Mapping:
+   *   palette.primary   → u_colorPrimary
+   *   palette.secondary  → u_colorSecondary
+   *   palette.fog        → u_colorBackground, u_colorGradientEnd
+   *   palette.wall       → u_colorGradientStart
+   */
+  private applyRoomPalette(room: GeneratedRoom, palette: RoomPalette): void {
+    const primary = new THREE.Color(palette.primary);
+    const secondary = new THREE.Color(palette.secondary);
+    const fog = new THREE.Color(palette.fog);
+    const wall = new THREE.Color(palette.wall);
+
+    for (const material of room.materials) {
+      if (!(material instanceof THREE.ShaderMaterial) || !material.uniforms.u_colorPrimary) {
+        continue;
+      }
+
+      const u = material.uniforms;
+      u.u_colorPrimary.value.copy(primary);
+      u.u_colorSecondary.value.copy(secondary);
+      u.u_colorBackground.value.copy(fog);
+      u.u_colorGradientStart.value.copy(wall);
+      u.u_colorGradientEnd.value.copy(fog);
+    }
   }
 
   // ============================================

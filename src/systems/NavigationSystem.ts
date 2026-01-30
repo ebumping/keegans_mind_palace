@@ -927,6 +927,11 @@ export class KeyboardInputManager {
       case 'Space':
         this.state.jump = true;
         break;
+      case 'Space':
+        if (!e.repeat) {
+          window.dispatchEvent(new CustomEvent('ground-cue'));
+        }
+        break;
     }
   }
 

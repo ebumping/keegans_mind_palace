@@ -53,6 +53,7 @@ export function AudioPermission({
         },
       });
 
+      useAudioStore.getState().setAudioCaptureInstance(capture);
       await capture.startCapture();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -85,6 +86,7 @@ export function AudioPermission({
         },
       });
 
+      useAudioStore.getState().setAudioCaptureInstance(capture);
       await capture.startMicrophoneCapture();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';

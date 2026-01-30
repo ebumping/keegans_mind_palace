@@ -10,7 +10,7 @@
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import type { AudioLevels } from '../core/AudioAnalyser';
-import type { AudioSource } from '../core/AudioCapture';
+import type { AudioCapture, AudioSource } from '../core/AudioCapture';
 
 const HISTORY_LENGTH = 64;
 // Store-level smoothing removed — AnalyserNode smoothingTimeConstant (0.45) is sufficient.
@@ -86,12 +86,14 @@ export interface AudioStore {
   error: Error | null;
   // Set when a live audio stream ends and we fall back to demo mode
   streamLost: boolean;
+  audioCaptureInstance: AudioCapture | null;
 
   // Actions
   updateLevels: (levels: AudioLevels) => void;
   setCapturing: (isCapturing: boolean, source?: AudioSource) => void;
   setError: (error: Error | null) => void;
   setStreamLost: (lost: boolean) => void;
+  setAudioCaptureInstance: (capture: AudioCapture | null) => void;
   reset: () => void;
 }
 
@@ -114,6 +116,7 @@ const initialState = {
   audioSource: null as AudioSource,
   error: null as Error | null,
   streamLost: false,
+  audioCaptureInstance: null as AudioCapture | null,
 };
 
 export const useAudioStore = create<AudioStore>((set) => ({
@@ -161,6 +164,10 @@ export const useAudioStore = create<AudioStore>((set) => ({
 
   setStreamLost: (lost: boolean) => {
     set({ streamLost: lost });
+  },
+
+  setAudioCaptureInstance: (capture: AudioCapture | null) => {
+    set({ audioCaptureInstance: capture });
   },
 
   reset: () => {

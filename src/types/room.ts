@@ -222,6 +222,7 @@ export interface RoomConfig {
   gravityShift?: { x: number; y: number; z: number };  // Level 4: gravity direction
   dimensionBleed?: string;           // Level 5: alternate aesthetic name
   voidIntensity?: number;            // Level 5: void room darkness (0-1)
+  isCurated?: boolean;               // True when room uses a curated builder instead of procedural generation
 }
 
 // Reference type for variation changes stored on config

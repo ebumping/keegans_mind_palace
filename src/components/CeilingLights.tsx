@@ -436,7 +436,7 @@ export function CeilingLights({
       ))}
 
       {/* Ambient fill so rooms aren't pitch black between fixtures */}
-      <ambientLight intensity={0.08} color="#e8e0d8" />
+      <ambientLight intensity={0.04} color="#e8e0d8" />
     </group>
   );
 }
