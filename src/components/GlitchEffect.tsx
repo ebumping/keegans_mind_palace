@@ -79,10 +79,10 @@ vec4 screenTear(vec2 uv, float intensity) {
     displaced.x = fract(displaced.x + displacement);
   }
 
-  float scanLine = step(0.98, sin(uv.y * u_resolution.y * 0.5 + u_glitchTime * 100.0)) * intensity * 0.3;
+  float scanLine = step(0.99, sin(uv.y * u_resolution.y * 0.5 + u_glitchTime * 60.0)) * intensity * 0.12;
 
   vec4 color = texture2D(inputBuffer, displaced);
-  color.rgb = mix(color.rgb, vec3(1.0), scanLine);
+  color.rgb = mix(color.rgb, vec3(0.7), scanLine);
 
   return color;
 }
@@ -139,22 +139,18 @@ vec4 geometryJitter(vec2 uv, float intensity) {
   return texture2D(inputBuffer, uv + vec2(jitterX, jitterY));
 }
 
-// Color inversion effect
+// Color inversion effect — block-based only, no full-screen flash
 vec4 colorInversion(vec2 uv, float intensity) {
   vec4 color = texture2D(inputBuffer, uv);
 
   vec2 block = floor(uv * 8.0);
-  float blockRand = random(block + floor(u_glitchTime * 5.0));
+  float blockRand = random(block + floor(u_glitchTime * 3.0));
 
-  float threshold = 1.0 - intensity * 0.4;
+  float threshold = 1.0 - intensity * 0.25;
 
   if (blockRand > threshold) {
-    color.rgb = 1.0 - color.rgb;
-  }
-
-  float flashChance = step(0.995, random(vec2(floor(u_glitchTime * 30.0), 0.0)));
-  if (flashChance > 0.5) {
-    color.rgb = mix(color.rgb, 1.0 - color.rgb, intensity * 0.5);
+    // Partial inversion — blend rather than hard swap
+    color.rgb = mix(color.rgb, 1.0 - color.rgb, 0.6);
   }
 
   return color;
@@ -258,29 +254,26 @@ vec4 realityBreak(vec2 uv, float intensity) {
     color += texture2D(inputBuffer, uv) * 0.15;
   }
 
-  // Channel swap based on time — more aggressive at high Growl
-  float swapSpeed = 15.0 + growlFactor * 20.0;
+  // Gentle channel swap — partial blend instead of hard swap
+  float swapSpeed = 8.0 + growlFactor * 10.0;
   float swapTime = sin(u_glitchTime * swapSpeed);
-  if (swapTime > 0.7) {
-    color.rgb = color.gbr;
-  } else if (swapTime < -0.7) {
-    color.rgb = color.brg;
+  if (swapTime > 0.85) {
+    color.rgb = mix(color.rgb, color.gbr, 0.4);
+  } else if (swapTime < -0.85) {
+    color.rgb = mix(color.rgb, color.brg, 0.4);
   }
 
-  // Static noise overlay — scales with Growl
-  float staticNoise = random(uv * u_resolution + u_glitchTime * 100.0);
-  color.rgb = mix(color.rgb, vec3(staticNoise), intensity * (0.15 + growlFactor * 0.1));
+  // Very faint film grain — barely perceptible
+  float staticNoise = random(uv * u_resolution + u_glitchTime * 20.0);
+  color.rgb = mix(color.rgb, vec3(staticNoise), intensity * 0.025);
 
-  // Full-screen inversion at Growl > 0.8 — periodic flashes
+  // High Growl — subtle desaturation pulse instead of full inversion
   if (growlFactor > 0.8) {
-    float invPulse = sin(u_glitchTime * 8.0) * 0.5 + 0.5;
-    float invStrength = (growlFactor - 0.8) * 5.0 * intensity * invPulse;
-    color.rgb = mix(color.rgb, 1.0 - color.rgb, clamp(invStrength, 0.0, 0.9));
+    float pulse = sin(u_glitchTime * 2.0) * 0.5 + 0.5;
+    float strength = (growlFactor - 0.8) * 2.5 * intensity * pulse;
+    float luma = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+    color.rgb = mix(color.rgb, vec3(luma), clamp(strength, 0.0, 0.5));
   }
-
-  // Transient-triggered inversion flash
-  float invFlash = step(0.98, sin(u_glitchTime * 25.0));
-  color.rgb = mix(color.rgb, 1.0 - color.rgb, invFlash * intensity * 0.6);
 
   // Distortion: warp UVs from center at extreme Growl
   if (growlFactor > 0.7) {
@@ -297,24 +290,18 @@ vec4 realityBreak(vec2 uv, float intensity) {
   float vignette = 1.0 - length((uv - 0.5) * 2.0) * intensity * 0.3;
   color.rgb *= max(vignette, 0.3);
 
-  // Occasional blackout frames — more frequent at high Growl
-  float blackoutThreshold = 0.995 - growlFactor * 0.01;
-  float blackout = step(blackoutThreshold, random(vec2(floor(u_glitchTime * 60.0), 0.5)));
-  color.rgb *= 1.0 - blackout * 0.8;
+  // Subtle dimming pulses instead of blackout frames
+  float dimPulse = sin(u_glitchTime * 1.5 + growlFactor * 3.0) * 0.5 + 0.5;
+  color.rgb *= 1.0 - dimPulse * growlFactor * 0.15;
 
   color.a = 1.0;
   return color;
 }
 
 void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor) {
-  // No glitch - but still apply ambient pixel dissolve at high Growl
+  // No glitch — clean passthrough, no ambient overlay noise
   if (u_glitchIntensity < 0.001 || u_glitchType < 0) {
-    // Ambient pixel dissolve when Growl is high even without active glitch
-    if (u_pixelDissolve > 0.01) {
-      outputColor = pixelDissolve(uv, u_pixelDissolve * 0.3);
-    } else {
-      outputColor = inputColor;
-    }
+    outputColor = inputColor;
     return;
   }
 
@@ -335,10 +322,10 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor)
     outputColor = inputColor;
   }
 
-  // Layer pixel dissolve on top of any active glitch when Growl is high
-  if (u_pixelDissolve > 0.1 && u_glitchType != 5) {
-    vec4 dissolved = pixelDissolve(uv, u_pixelDissolve);
-    outputColor = mix(outputColor, dissolved, u_pixelDissolve * 0.4);
+  // Light pixel dissolve on top of active glitch at very high Growl only
+  if (u_pixelDissolve > 0.4 && u_glitchType != 5) {
+    vec4 dissolved = pixelDissolve(uv, u_pixelDissolve * 0.5);
+    outputColor = mix(outputColor, dissolved, u_pixelDissolve * 0.15);
   }
 }
 `;

@@ -68,7 +68,7 @@ export class GlitchTriggerSystem {
     time: 0,
   };
 
-  private baseCooldown: number = 500; // ms between glitches
+  private baseCooldown: number = 1200; // ms between glitches
 
   /**
    * Update the trigger system each frame.
@@ -137,39 +137,37 @@ export class GlitchTriggerSystem {
     const dt = Math.min(delta, 0.1); // Cap to prevent burst after tab-switch
 
     // 1. Transient trigger (immediate response to audio peaks)
-    // Triggers when transient is detected with sufficient intensity
-    if (isTransient && transientIntensity > 0.5) {
+    // Higher threshold and capped intensity to reduce flash severity
+    if (isTransient && transientIntensity > 0.7) {
       return {
         type: 'transient',
-        intensity: Math.min(transientIntensity * 1.2, 1.0),
-        duration: 50 + transientIntensity * 150, // 50-200ms
+        intensity: Math.min(transientIntensity * 0.8, 0.7),
+        duration: 40 + transientIntensity * 100, // 40-140ms
       };
     }
 
     // 2. Growl-driven time-based trigger
-    // Base rate: ~3.6 glitches/hour at no Growl, scaling up to ~36/hour at max Growl
-    // Uses glitchChanceMultiplier from GrowlEffects for proper integration
-    const baseRatePerSecond = 0.001; // ~3.6 per hour base
+    // Reduced rate: ~1.8 glitches/hour base, scaling up to ~14/hour at max Growl
+    const baseRatePerSecond = 0.0005;
     const growlRate = baseRatePerSecond * scaling.triggerMultiplier * glitchChanceMultiplier;
-    const timeChance = 1 - Math.pow(1 - growlRate, dt * 60); // Convert to per-update probability
+    const timeChance = 1 - Math.pow(1 - growlRate, dt * 60);
     if (Math.random() < timeChance) {
       return {
         type: 'time',
-        intensity: Math.min(0.3 + growlIntensity * 0.5 + scaling.intensityBoost, 1.0),
-        duration: (100 + growlIntensity * 400) * scaling.durationMultiplier,
+        intensity: Math.min(0.2 + growlIntensity * 0.4 + scaling.intensityBoost, 0.75),
+        duration: (80 + growlIntensity * 300) * scaling.durationMultiplier,
       };
     }
 
-    // 3. Random ambient trigger (works even with zero Growl and no audio)
-    // Ensures the palace always feels slightly off — rare surprise glitches
-    // Rate: ~1 glitch per 5 minutes baseline
-    const randomRatePerSecond = 0.0033;
+    // 3. Random ambient trigger — rare surprise glitches
+    // Rate: ~1 glitch per 8 minutes baseline
+    const randomRatePerSecond = 0.002;
     const randomChance = 1 - Math.pow(1 - randomRatePerSecond, dt * 60);
     if (Math.random() < randomChance) {
       return {
         type: 'random',
-        intensity: 0.2 + Math.random() * 0.3,
-        duration: 50 + Math.random() * 100,
+        intensity: 0.15 + Math.random() * 0.25,
+        duration: 40 + Math.random() * 80,
       };
     }
 
@@ -232,20 +230,20 @@ export class GlitchTriggerSystem {
    */
   private getGlitchScaling(growlIntensity: number): GlitchScaling {
     return {
-      // Trigger chance multiplier (1x to 3x)
-      triggerMultiplier: 1 + growlIntensity * 2,
+      // Trigger chance multiplier (1x to 2x)
+      triggerMultiplier: 1 + growlIntensity * 1,
 
-      // Duration multiplier (1x to 1.5x)
-      durationMultiplier: 1 + growlIntensity * 0.5,
+      // Duration multiplier (1x to 1.3x)
+      durationMultiplier: 1 + growlIntensity * 0.3,
 
-      // Intensity boost (0 to 0.3)
-      intensityBoost: growlIntensity * 0.3,
+      // Intensity boost (0 to 0.15)
+      intensityBoost: growlIntensity * 0.15,
 
-      // Reality break becomes possible at 50% Growl
-      realityBreakEnabled: growlIntensity > 0.5,
+      // Reality break becomes possible at 60% Growl
+      realityBreakEnabled: growlIntensity > 0.6,
 
-      // Minimum cooldown decreases (500ms to 200ms)
-      minCooldown: Math.max(200, 500 - growlIntensity * 300),
+      // Minimum cooldown decreases (1200ms to 600ms)
+      minCooldown: Math.max(600, 1200 - growlIntensity * 600),
     };
   }
 
@@ -437,11 +435,11 @@ export class GlitchSystem {
     this.uniforms.u_transientIntensity.value = audioState.transientIntensity;
     this.uniforms.u_growlIntensity.value = timeState.growlIntensity;
 
-    // Compute pixel dissolve: active at high Growl, scales with intensity
-    // Dissolve kicks in at Growl > 0.4 and scales up
+    // Compute pixel dissolve: only at high Growl during active glitch
+    // Dissolve kicks in at Growl > 0.6 and scales gently
     const growl = timeState.growlIntensity;
     this.uniforms.u_pixelDissolve.value = state.active
-      ? Math.max(0, (growl - 0.4) / 0.6) * state.intensity
+      ? Math.max(0, (growl - 0.6) / 0.4) * state.intensity * 0.5
       : 0;
 
     // Calculate specific effect parameters

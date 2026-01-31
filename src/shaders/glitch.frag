@@ -99,10 +99,10 @@ vec3 screenTear(vec2 uv, float intensity) {
   }
 
   // Add scan line artifact at tear edges
-  float scanLine = step(0.98, sin(uv.y * u_resolution.y * 0.5 + u_glitchTime * 100.0)) * intensity * 0.3;
+  float scanLine = step(0.99, sin(uv.y * u_resolution.y * 0.5 + u_glitchTime * 60.0)) * intensity * 0.12;
 
   vec3 color = texture2D(u_sceneTexture, displaced).rgb;
-  color = mix(color, vec3(1.0), scanLine);
+  color = mix(color, vec3(0.7), scanLine);
 
   return color;
 }
@@ -182,16 +182,10 @@ vec3 colorInversion(vec2 uv, float intensity) {
   float blockRand = random(block + floor(u_glitchTime * 5.0));
 
   // Probability of inversion increases with intensity
-  float threshold = 1.0 - intensity * 0.4;
+  float threshold = 1.0 - intensity * 0.25;
 
   if (blockRand > threshold) {
-    color = 1.0 - color;
-  }
-
-  // Add negative flash overlay
-  float flashChance = step(0.995, random(vec2(floor(u_glitchTime * 30.0), 0.0)));
-  if (flashChance > 0.5) {
-    color = mix(color, 1.0 - color, intensity * 0.5);
+    color = mix(color, 1.0 - color, 0.6);
   }
 
   return color;
@@ -306,29 +300,26 @@ vec3 realityBreak(vec2 uv, float intensity) {
     color += texture2D(u_sceneTexture, uv).rgb * 0.15;
   }
 
-  // Channel swap — more aggressive at high Growl
-  float swapSpeed = 15.0 + growlFactor * 20.0;
+  // Gentle channel swap — partial blend instead of hard swap
+  float swapSpeed = 8.0 + growlFactor * 10.0;
   float swapTime = sin(u_glitchTime * swapSpeed);
-  if (swapTime > 0.7) {
-    color = color.gbr;
-  } else if (swapTime < -0.7) {
-    color = color.brg;
+  if (swapTime > 0.85) {
+    color = mix(color, color.gbr, 0.4);
+  } else if (swapTime < -0.85) {
+    color = mix(color, color.brg, 0.4);
   }
 
-  // Static noise
-  float staticNoise = random(uv * u_resolution + u_glitchTime * 100.0);
-  color = mix(color, vec3(staticNoise), intensity * (0.15 + growlFactor * 0.1));
+  // Very faint film grain — barely perceptible
+  float staticNoise = random(uv * u_resolution + u_glitchTime * 20.0);
+  color = mix(color, vec3(staticNoise), intensity * 0.025);
 
-  // Full-screen inversion at Growl > 0.8
+  // High Growl — subtle desaturation pulse instead of full inversion
   if (growlFactor > 0.8) {
-    float invPulse = sin(u_glitchTime * 8.0) * 0.5 + 0.5;
-    float invStrength = (growlFactor - 0.8) * 5.0 * intensity * invPulse;
-    color = mix(color, 1.0 - color, clamp(invStrength, 0.0, 0.9));
+    float pulse = sin(u_glitchTime * 2.0) * 0.5 + 0.5;
+    float strength = (growlFactor - 0.8) * 2.5 * intensity * pulse;
+    float luma = dot(color, vec3(0.299, 0.587, 0.114));
+    color = mix(color, vec3(luma), clamp(strength, 0.0, 0.5));
   }
-
-  // Transient flash
-  float invFlash = step(0.98, sin(u_glitchTime * 25.0));
-  color = mix(color, 1.0 - color, invFlash * intensity * 0.6);
 
   // Center-warp distortion at extreme Growl
   if (growlFactor > 0.7) {
@@ -345,10 +336,9 @@ vec3 realityBreak(vec2 uv, float intensity) {
   float vignette = 1.0 - length((uv - 0.5) * 2.0) * intensity * 0.3;
   color *= max(vignette, 0.3);
 
-  // Blackout frames
-  float blackoutThreshold = 0.995 - growlFactor * 0.01;
-  float blackout = step(blackoutThreshold, random(vec2(floor(u_glitchTime * 60.0), 0.5)));
-  color *= 1.0 - blackout * 0.8;
+  // Subtle dimming pulses instead of blackout frames
+  float dimPulse = sin(u_glitchTime * 1.5 + growlFactor * 3.0) * 0.5 + 0.5;
+  color *= 1.0 - dimPulse * growlFactor * 0.15;
 
   return color;
 }

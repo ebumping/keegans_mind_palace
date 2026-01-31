@@ -77,37 +77,28 @@ const infiniteHallway: CuratedRoom = {
   name: 'The Infinite Hallway',
   archetype: RoomArchetype.CORRIDOR_OF_DOORS,
   shapeType: RoomShape.RECTANGLE,
-  dimensions: { width: 3.5, height: 4.5, depth: 55 },
-  floorVertices: rectVertices(3.5, 55),
-  wallSegments: wallsFromPolygon(rectVertices(3.5, 55), 4.5),
+  dimensions: { width: 3, height: 4, depth: 40 },
+  floorVertices: rectVertices(3, 40),
+  wallSegments: wallsFromPolygon(rectVertices(3, 40), 4),
   lightSources: [
-    // Pools of warm fluorescent light every 8m — gaps of darkness between
-    ...Array.from({ length: 5 }, (_, i) => ({
-      position: { x: 0, y: 3.8, z: -20 + i * 10 },
+    // Pools of warm fluorescent light every 6m
+    ...Array.from({ length: 7 }, (_, i) => ({
+      position: { x: 0, y: 3.8, z: -18 + i * 6 },
       color: '#fff5e0',
-      intensity: 0.7,
+      intensity: 0.8,
       type: 'rect' as const,
-      distance: 6,
-      decay: 2.0,
+      distance: 8,
+      decay: 1.5,
     })),
-    // One light midway is a different color — subtly wrong
+    // Flickering light midway
     {
-      position: { x: 0, y: 3.8, z: 5 },
-      color: '#e0d0ff',
-      intensity: 1.0,
+      position: { x: 0, y: 3.8, z: 0 },
+      color: '#fff5e0',
+      intensity: 1.2,
       type: 'point' as const,
       flicker: true,
-      distance: 5,
+      distance: 6,
       decay: 2,
-    },
-    // Faint glow at the far end — beckoning
-    {
-      position: { x: 0, y: 2.0, z: 25 },
-      color: '#88ccdd',
-      intensity: 0.4,
-      type: 'point' as const,
-      distance: 12,
-      decay: 1.0,
     },
   ],
   palette: {
@@ -120,52 +111,41 @@ const infiniteHallway: CuratedRoom = {
     wall: '#e8dcc8',
   },
   atmosphere: {
-    fogDensity: 0.045,
+    fogDensity: 0.04,
     fogColor: '#2a2520',
     particleType: 'dust',
-    particleCount: 40,
+    particleCount: 30,
     ambientSoundHint: 'fluorescent_hum',
   },
   furniture: [
-    // Doors on both sides — but spacing becomes irregular deeper in
-    ...Array.from({ length: 7 }, (_, i) => ({
+    // 12 identical doors (6 per side) — all decorative
+    ...Array.from({ length: 6 }, (_, i) => ({
       type: 'wooden_door',
-      position: { x: -1.45, y: 0, z: -20 + i * 5.5 + (i > 4 ? i * 0.8 : 0) },
+      position: { x: -1.45, y: 0, z: -15 + i * 5.5 },
       rotation: { x: 0, y: Math.PI / 2, z: 0 },
       scale: { x: 1, y: 1, z: 1 },
     })),
-    ...Array.from({ length: 7 }, (_, i) => ({
+    ...Array.from({ length: 6 }, (_, i) => ({
       type: 'wooden_door',
-      position: { x: 1.45, y: 0, z: -20 + i * 5.5 + (i > 4 ? i * 0.8 : 0) },
+      position: { x: 1.45, y: 0, z: -15 + i * 5.5 },
       rotation: { x: 0, y: -Math.PI / 2, z: 0 },
       scale: { x: 1, y: 1, z: 1 },
     })),
   ],
   doorways: [
-    // Far end — main progression
     {
-      position: { x: 0, y: 25 },
+      position: { x: 0, y: 20 },
       facingAngle: 0,
       width: 2.5,
       height: 3.5,
-      wallSegmentIndex: 2,
+      wallSegmentIndex: 2, // far end
       leadsTo: 2,
       glowColor: '#88ccdd',
-    },
-    // Side alcove halfway — hidden secondary path
-    {
-      position: { x: -1.75, y: 3 },
-      facingAngle: Math.PI / 2,
-      width: 2.0,
-      height: 3.0,
-      wallSegmentIndex: 3,
-      leadsTo: 3,
-      glowColor: '#443355',
     },
   ],
   floorType: FloorType.TILE,
   ceilingConfig: {
-    height: 4.5,
+    height: 4,
     hasLighting: true,
     lightingType: 'fluorescent',
     hasSkylight: false,
