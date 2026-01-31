@@ -14,6 +14,14 @@ import { buildStairwellNowhere } from './templates/StairwellNowhere';
 import { buildHotelCorridor } from './templates/HotelCorridor';
 import { buildMallAtrium } from './templates/MallAtrium';
 import { buildBathroom } from './templates/Bathroom';
+import { buildSubwayPlatform } from './templates/SubwayPlatform';
+import { buildServerRoom } from './templates/ServerRoom';
+import { buildLiminalClassroom } from './templates/LiminalClassroom';
+import { buildParkingGarage } from './templates/ParkingGarage';
+import { buildLaundromat } from './templates/Laundromat';
+import { buildWaitingRoom } from './templates/WaitingRoom';
+import { buildElevatorBank } from './templates/ElevatorBank';
+import { buildLivingRoom } from './templates/LivingRoom';
 
 /** Common interface for all curated room builder results */
 export interface CuratedRoomResult {
@@ -29,9 +37,7 @@ export type CuratedBuilderFn = (seed?: number) => CuratedRoomResult;
 
 /**
  * Registry mapping templateId to builder functions.
- * Only rooms 1–7 have full curated builders; rooms 8–15 have template data
- * (palette, furniture, etc.) but no builder — they use procedural generation
- * with curated palettes applied.
+ * Rooms 1–15 all have full curated builders.
  */
 const BUILDER_REGISTRY: Record<string, CuratedBuilderFn> = {
   infinite_hallway: buildInfiniteHallway,
@@ -41,6 +47,14 @@ const BUILDER_REGISTRY: Record<string, CuratedBuilderFn> = {
   hotel_corridor: buildHotelCorridor,
   mall_atrium: buildMallAtrium,
   bathroom: buildBathroom,
+  subway_platform: buildSubwayPlatform,
+  server_room: buildServerRoom,
+  liminal_classroom: buildLiminalClassroom,
+  parking_garage: buildParkingGarage,
+  laundromat: buildLaundromat,
+  waiting_room: buildWaitingRoom,
+  elevator_bank: buildElevatorBank,
+  living_room: buildLivingRoom,
 };
 
 /**

@@ -1275,7 +1275,7 @@ export class RoomGenerator {
   }
 
   private polygonWallRotation(edgeAngle: number): number {
-    return -edgeAngle + Math.PI / 2;
+    return -edgeAngle;
   }
 
   /**
