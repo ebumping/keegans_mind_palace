@@ -669,7 +669,6 @@ export function buildLiminalClassroom(seed: number = 410): LiminalClassroomResul
   buildAmbientLighting(group);
 
   let elapsedTime = 0;
-  let lastTickTime = 0;
 
   return {
     mesh: group,
@@ -698,11 +697,6 @@ export function buildLiminalClassroom(seed: number = 410): LiminalClassroomResul
       const baseMinuteAngle = -(elapsedTime * (Math.PI * 2 / 3600));
       clockMinuteHand.rotation.z = baseMinuteAngle;
 
-      // Tick trigger — record last tick
-      if (transientLevel > 0.3) {
-        lastTickTime = elapsedTime;
-      }
-
       // --- High-freq mapped to fluorescent buzz intensity ---
       const highLevel = audioData.high || 0;
       fluorescentMaterials.forEach((mat, i) => {
@@ -717,8 +711,7 @@ export function buildLiminalClassroom(seed: number = 410): LiminalClassroomResul
         }
       });
 
-      // Subtle ambient breathing — institutional unease
-      const _breathe = Math.sin(elapsedTime * 0.3) * 0.01;
+
     },
 
     dispose() {
