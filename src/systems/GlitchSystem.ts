@@ -435,11 +435,11 @@ export class GlitchSystem {
     this.uniforms.u_transientIntensity.value = audioState.transientIntensity;
     this.uniforms.u_growlIntensity.value = timeState.growlIntensity;
 
-    // Compute pixel dissolve: active at high Growl, scales with intensity
-    // Dissolve kicks in at Growl > 0.4 and scales up
+    // Compute pixel dissolve: only at high Growl during active glitch
+    // Dissolve kicks in at Growl > 0.6 and scales gently
     const growl = timeState.growlIntensity;
     this.uniforms.u_pixelDissolve.value = state.active
-      ? Math.max(0, (growl - 0.4) / 0.6) * state.intensity
+      ? Math.max(0, (growl - 0.6) / 0.4) * state.intensity * 0.5
       : 0;
 
     // Calculate specific effect parameters

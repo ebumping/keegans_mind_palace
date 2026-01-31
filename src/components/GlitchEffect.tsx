@@ -263,9 +263,9 @@ vec4 realityBreak(vec2 uv, float intensity) {
     color.rgb = mix(color.rgb, color.brg, 0.4);
   }
 
-  // Subtle static noise — scales with Growl
-  float staticNoise = random(uv * u_resolution + u_glitchTime * 50.0);
-  color.rgb = mix(color.rgb, vec3(staticNoise), intensity * (0.06 + growlFactor * 0.05));
+  // Very faint film grain — barely perceptible
+  float staticNoise = random(uv * u_resolution + u_glitchTime * 20.0);
+  color.rgb = mix(color.rgb, vec3(staticNoise), intensity * 0.025);
 
   // High Growl — subtle desaturation pulse instead of full inversion
   if (growlFactor > 0.8) {
@@ -299,14 +299,9 @@ vec4 realityBreak(vec2 uv, float intensity) {
 }
 
 void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor) {
-  // No glitch - but still apply ambient pixel dissolve at high Growl
+  // No glitch — clean passthrough, no ambient overlay noise
   if (u_glitchIntensity < 0.001 || u_glitchType < 0) {
-    // Ambient pixel dissolve when Growl is high even without active glitch
-    if (u_pixelDissolve > 0.01) {
-      outputColor = pixelDissolve(uv, u_pixelDissolve * 0.3);
-    } else {
-      outputColor = inputColor;
-    }
+    outputColor = inputColor;
     return;
   }
 
@@ -327,10 +322,10 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor)
     outputColor = inputColor;
   }
 
-  // Layer pixel dissolve on top of any active glitch when Growl is high
-  if (u_pixelDissolve > 0.1 && u_glitchType != 5) {
-    vec4 dissolved = pixelDissolve(uv, u_pixelDissolve);
-    outputColor = mix(outputColor, dissolved, u_pixelDissolve * 0.4);
+  // Light pixel dissolve on top of active glitch at very high Growl only
+  if (u_pixelDissolve > 0.4 && u_glitchType != 5) {
+    vec4 dissolved = pixelDissolve(uv, u_pixelDissolve * 0.5);
+    outputColor = mix(outputColor, dissolved, u_pixelDissolve * 0.15);
   }
 }
 `;

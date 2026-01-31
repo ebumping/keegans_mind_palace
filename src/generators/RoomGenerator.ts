@@ -1274,6 +1274,10 @@ export class RoomGenerator {
     return { wallMeshes, wallGeoms, wallMats };
   }
 
+  private polygonWallRotation(edgeAngle: number): number {
+    return -edgeAngle + Math.PI / 2;
+  }
+
   /**
    * Create walls from polygon vertices for non-rectangular room shapes.
    * For curved/spiral shapes, merges consecutive curved edges into single
@@ -1353,7 +1357,7 @@ export class RoomGenerator {
 
           const mesh = new THREE.Mesh(geometry, material);
           mesh.position.set(centerX, height / 2, centerY);
-          mesh.rotation.set(0, -angle, 0);
+          mesh.rotation.set(0, this.polygonWallRotation(angle), 0);
           mesh.receiveShadow = true;
 
           wallMeshes.push(mesh);
@@ -1460,7 +1464,7 @@ export class RoomGenerator {
 
         const mesh = new THREE.Mesh(geometry, material);
         mesh.position.set(centerX, wallHeight / 2, centerY);
-        mesh.rotation.set(0, -angle, 0);
+        mesh.rotation.set(0, this.polygonWallRotation(angle), 0);
         mesh.receiveShadow = true;
 
         meshes.push(mesh);
@@ -1614,7 +1618,12 @@ export class RoomGenerator {
     );
 
     if (usePolygonFloor) {
-      geometry = this.createPolygonFloor(shape!.vertices);
+      // Negate Y and reverse winding: floor rotation (-PI/2 around X) maps
+      // vertex.y → -z, but walls place geometry at z = vertex.y.
+      // Negating Y compensates: vertex(-y) → -(-z) = +z, matching walls.
+      // Reversing restores CCW winding so the face normal points upward.
+      const floorVerts = shape!.vertices.map(v => ({ x: v.x, y: -v.y })).reverse();
+      geometry = this.createPolygonFloor(floorVerts);
     } else {
       const segments = Math.max(1, complexity);
       geometry = new THREE.PlaneGeometry(width, depth, segments, segments);

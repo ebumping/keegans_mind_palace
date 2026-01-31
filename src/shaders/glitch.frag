@@ -309,9 +309,9 @@ vec3 realityBreak(vec2 uv, float intensity) {
     color = mix(color, color.brg, 0.4);
   }
 
-  // Subtle static noise
-  float staticNoise = random(uv * u_resolution + u_glitchTime * 50.0);
-  color = mix(color, vec3(staticNoise), intensity * (0.06 + growlFactor * 0.05));
+  // Very faint film grain — barely perceptible
+  float staticNoise = random(uv * u_resolution + u_glitchTime * 20.0);
+  color = mix(color, vec3(staticNoise), intensity * 0.025);
 
   // High Growl — subtle desaturation pulse instead of full inversion
   if (growlFactor > 0.8) {
